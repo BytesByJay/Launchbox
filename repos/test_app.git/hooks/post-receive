@@ -1,0 +1,22 @@
+#!/bin/bash
+
+APP_NAME="test_app"
+
+# ✅ Hardcode the Launchbox root
+BASE_DIR="/home/dhananjayan/projects/Launchbox/Launchbox"
+APP_DIR="$BASE_DIR/apps/$APP_NAME"
+
+echo "[Launchbox] Deploying $APP_NAME"
+echo "[Debug] BASE_DIR=$BASE_DIR"
+
+rm -rf "$APP_DIR"
+mkdir -p "$APP_DIR"
+GIT_WORK_TREE="$APP_DIR" git checkout -f
+
+# ✅ Set Python path so modules are found
+export PYTHONPATH="$BASE_DIR"
+echo "[Debug] PYTHONPATH=$PYTHONPATH"
+
+cd "$BASE_DIR"
+/usr/bin/python3 -m launchbox.builder "$APP_NAME"
+/usr/bin/python3 -m launchbox.runner "$APP_NAME"
