@@ -17,7 +17,7 @@ def run(app_name):
             "--name",
             app_name,
             "--network",
-            "traefik_default",  # 🧠 This line is crucial
+            "traefik_default",  # This line is crucial
             "--label",
             f"traefik.enable=true",
             "--label",
