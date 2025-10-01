@@ -1,7 +1,0 @@
-#!/bin/bash
-APP_NAME=blog_app
-echo "[Launchbox] Deploying $APP_NAME"
-export BASE_DIR=$(pwd)
-export PYTHONPATH=$(pwd)
-python3 -m launchbox.builder $APP_NAME
-python3 -m launchbox.runner $APP_NAME

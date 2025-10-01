@@ -1,0 +1,41 @@
+# Launchbox Configuration Example
+# This demonstrates all available configuration options
+
+app:
+  # Port your application runs on
+  port: 3000
+  
+  # Health check configuration (optional)
+  health_check:
+    path: "/health"
+    interval: "30s"
+    timeout: "10s"
+    retries: 3
+  
+  # Build configuration
+  build:
+    dockerfile: "Dockerfile"
+    context: "."
+
+# Resource limits (optional)
+resources:
+  memory: "256m"    # Memory limit: 256m, 512m, 1g, etc.
+  cpu: 0.5          # CPU limit: 0.5 = half a CPU core
+
+# Environment variables
+environment:
+  NODE_ENV: development
+  DEBUG: true
+  LOG_LEVEL: info
+
+# Database configuration
+database:
+  enabled: false        # Set to true to auto-provision a database
+  type: postgresql      # postgresql, mysql, mongodb
+  version: "13"         # Database version
+  name: test_app_db     # Database name (defaults to <app_name>_db)
+
+# HTTPS configuration
+https:
+  enabled: false        # Set to true for local HTTPS
+  redirect_http: true   # Redirect HTTP to HTTPS when enabled

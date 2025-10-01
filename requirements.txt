@@ -1,0 +1,5 @@
+# Launchbox Dependencies
+pyyaml>=6.0
+docker>=6.0.0
+flask>=2.3.0
+pathlib>=1.0.1

@@ -87,6 +87,15 @@ htmlcov/
 *.log
 docker-compose.override.yml
 
+# Launchbox generated directories and files
+letsencrypt/
+certs/
+logs/
+
+# Git repositories (exclude contents but keep directory structure)
+repos/*
+!repos/.gitkeep
+
 # macOS
 .DS_Store
 
