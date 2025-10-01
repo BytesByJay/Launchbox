@@ -9,6 +9,8 @@ services:
       - "--api.insecure=true"              # ✅ expose dashboard without auth
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
+      - "--log.level=DEBUG"
+      - "--accesslog=true"
       - "--providers.file.directory=/etc/traefik/dynamic/"
       - "--providers.file.watch=true"
       - "--entrypoints.web.address=:80"

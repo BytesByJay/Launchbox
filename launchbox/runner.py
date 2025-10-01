@@ -67,10 +67,14 @@ def run(app_name: str) -> bool:
         
         # Add health check if configured
         if health_check:
-            health_cmd = f"curl -f http://localhost:{port}{health_check.get('path', '/health')} || exit 1"
+            # Use Python-based health check that works in all containers
+            health_path = health_check.get('path', '/health')
             interval = health_check.get('interval', '30s')
             timeout = health_check.get('timeout', '10s')
             retries = health_check.get('retries', 3)
+            
+            # Create a simple Python health check that doesn't require curl
+            health_cmd = f"python3 -c \"import urllib.request, sys; urllib.request.urlopen('http://localhost:{port}{health_path}', timeout=5)\""
             
             run_cmd.extend([
                 "--health-cmd", health_cmd,
@@ -78,7 +82,7 @@ def run(app_name: str) -> bool:
                 "--health-timeout", timeout,
                 "--health-retries", str(retries)
             ])
-            logger.debug(f"Health check enabled: {health_cmd}")
+            logger.debug(f"Health check enabled (Python-based): {health_cmd}")
         
         # Add HTTPS labels if enabled
         if config.is_https_enabled():
