@@ -226,4 +226,3 @@ MIT
 Inspired by Dokku, Coolify, CapRover, Heroku buildpacks philosophy.
 
 Happy pushing! 
-```
