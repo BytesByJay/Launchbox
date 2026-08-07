@@ -12,6 +12,7 @@ import sys
 
 from launchbox.config import BASE_DIR, REPOS_DIR, validate_app_name
 from launchbox.logger import setup_logger, LaunchboxError
+from launchbox.state import StateStore
 
 logger = setup_logger("init")
 
@@ -143,6 +144,18 @@ def init(app_name: str, default_branch: str = "main") -> str:
             f"No application directory at {app_dir}. "
             "Create it with a Dockerfile before pushing."
         )
+
+    # Registration alone previously left the app invisible everywhere: no
+    # local apps/<name> directory (git-push apps never get one) and no
+    # deployments row (that's only written by an actual deploy attempt). A
+    # dashboard or `launchbox list` reading either source found nothing until
+    # the first push succeeded. Recording the row here makes the app visible
+    # immediately, showing "not deployed" until it is.
+    try:
+        with StateStore() as store:
+            store.register(app_name)
+    except Exception as e:
+        logger.warning(f"Failed to record registration for {app_name}: {e}")
 
     return repo_path
 

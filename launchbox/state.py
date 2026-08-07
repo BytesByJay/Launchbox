@@ -301,9 +301,31 @@ class StateStore:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def register(self, app_name: str) -> None:
+        """Make an application visible before it has ever been deployed.
+
+        ``record_start`` only creates an ``apps`` row as a side effect of a
+        deployment attempt, so an application registered via ``init`` but not
+        yet pushed had no row anywhere -- invisible to anything that reads
+        this table. This exists purely so registration itself is visible.
+        """
+        self._ensure_app_row(app_name)
+        self._conn.commit()
+
     def forget_app(self, app_name: str) -> None:
         self._conn.execute("DELETE FROM apps WHERE app_name = ?", (app_name,))
         self._conn.commit()
+
+    def list_recent_deployments(self, limit: int = 15) -> List[Dict[str, Any]]:
+        """The most recent deployment attempts across every application.
+
+        Used for a platform-wide activity feed; per-application history is
+        ``list_deployments``.
+        """
+        rows = self._conn.execute(
+            "SELECT * FROM deployments ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     # ---------------------------------------------------- supervisor counters
 

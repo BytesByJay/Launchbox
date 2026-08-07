@@ -5,63 +5,84 @@
 {% block content %}
 <div class="flex items-start justify-between mb-6 flex-wrap gap-4">
     <div>
-        <h1 class="text-2xl font-semibold tracking-tight text-gray-900">Applications</h1>
-        <p class="mt-1 text-sm text-gray-500">
+        <h1 class="text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">Applications</h1>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
             {{ apps|length }} registered
             {% set running_count = apps|selectattr("status", "equalto", "running")|list|length %}
-            · <span class="text-emerald-600 font-medium">{{ running_count }} running</span>
+            · <span class="text-emerald-600 dark:text-emerald-400 font-medium">{{ running_count }} running</span>
+            <span id="live-indicator" class="hidden ml-2 text-xs text-gray-400 dark:text-gray-500">
+                <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse mr-1"></span>live
+            </span>
         </p>
     </div>
     <div class="flex items-center gap-2">
         <div class="relative">
             <i class="fas fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
             <input id="app-search" type="text" placeholder="Filter applications…"
-                class="pl-8 pr-3 py-2 text-sm bg-white border border-gray-200 rounded-lg w-56 focus:outline-none focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 placeholder:text-gray-400">
+                class="pl-8 pr-3 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg w-56 focus:outline-none focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 placeholder:text-gray-400 dark:placeholder:text-gray-500 text-gray-900 dark:text-gray-100">
         </div>
         <button onclick="location.reload()" title="Refresh"
-            class="w-9 h-9 flex items-center justify-center text-gray-500 hover:text-gray-900 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+            class="w-9 h-9 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
             <i class="fas fa-arrows-rotate text-sm"></i>
+        </button>
+        <button onclick="openNewAppModal()"
+            class="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-accent-600 hover:bg-accent-700 px-3.5 py-2 rounded-lg transition-colors">
+            <i class="fas fa-plus text-xs"></i> New application
         </button>
     </div>
 </div>
 
-<div class="bg-white border border-gray-200 rounded-xl shadow-card overflow-hidden">
-    <div id="apps-list" class="divide-y divide-gray-100">
+<div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card overflow-hidden">
+    <div id="apps-list" class="divide-y divide-gray-100 dark:divide-gray-800">
         {% for app in apps %}
-        <div class="app-row px-5 py-4 hover:bg-gray-50/60 transition-colors" data-app-name="{{ app.name|lower }}">
+        <div class="app-row px-5 py-4 hover:bg-gray-50/60 dark:hover:bg-gray-800/40 transition-colors" data-app-name="{{ app.name|lower }}">
             <div class="flex items-center justify-between gap-4 flex-wrap">
                 <div class="flex items-center gap-3.5 min-w-0">
                     {% if app.marked_failed %}
                         <span class="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" title="Failed"></span>
-                    {% elif app.status == 'running' %}
-                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" title="Running"></span>
+                    {% elif app.health_status == 'healthy' or app.health_status == 'running' %}
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" title="{{ app.health_status|title }}"></span>
+                    {% elif app.health_status == 'unhealthy' %}
+                        <span class="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" title="Unhealthy"></span>
+                    {% elif app.health_status == 'starting' %}
+                        <span class="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0 animate-pulse" title="Starting"></span>
                     {% elif app.status == 'exited' %}
-                        <span class="w-2.5 h-2.5 rounded-full bg-red-400 shrink-0" title="Exited"></span>
+                        <span class="w-2.5 h-2.5 rounded-full bg-gray-400 shrink-0" title="Exited"></span>
                     {% elif app.status == 'not deployed' %}
-                        <span class="w-2.5 h-2.5 rounded-full bg-gray-300 shrink-0" title="Not deployed"></span>
+                        <span class="w-2.5 h-2.5 rounded-full bg-gray-300 dark:bg-gray-600 shrink-0" title="Not deployed"></span>
                     {% else %}
                         <span class="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" title="{{ app.status|title }}"></span>
                     {% endif %}
 
                     <div class="min-w-0">
                         <div class="flex items-center gap-2 flex-wrap">
-                            <a href="/app/{{ app.name }}" class="font-medium text-gray-900 hover:text-accent-600 truncate">{{ app.name }}</a>
+                            <a href="/app/{{ app.name }}" class="font-medium text-gray-900 dark:text-gray-100 hover:text-accent-600 dark:hover:text-accent-400 truncate">{{ app.name }}</a>
                             {% if app.marked_failed %}
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-red-50 text-red-700 border border-red-200">Failed</span>
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900">Failed</span>
+                            {% elif app.health_status == 'unhealthy' %}
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900">Unhealthy</span>
                             {% endif %}
-                            {% if not app.has_dockerfile %}
-                                <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                            {% if not app.has_local_dir %}
+                                <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-400 border border-accent-200 dark:border-accent-800">
+                                    <i class="fas fa-code-branch text-[10px]"></i> git push
+                                </span>
+                            {% elif not app.has_dockerfile %}
+                                <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
                                     <i class="fas fa-triangle-exclamation text-[10px]"></i> No Dockerfile
                                 </span>
                             {% endif %}
                         </div>
-                        <div class="mt-0.5 flex items-center gap-2 text-xs text-gray-500 font-mono">
-                            <span>{{ app.status|title }}</span>
-                            <span class="text-gray-300">·</span>
+                        <div class="mt-0.5 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 font-mono">
+                            <span>{{ app.health_status|title if app.health_status not in ('unknown', None) else app.status|title }}</span>
+                            <span class="text-gray-300 dark:text-gray-600">·</span>
                             <span>:{{ app.port }}</span>
                             {% if app.container_id %}
-                                <span class="text-gray-300">·</span>
+                                <span class="text-gray-300 dark:text-gray-600">·</span>
                                 <span>{{ app.container_id[:12] }}</span>
+                            {% endif %}
+                            {% if app.restart_attempts %}
+                                <span class="text-gray-300 dark:text-gray-600">·</span>
+                                <span class="text-amber-600 dark:text-amber-400">{{ app.restart_attempts }} restart{{ 's' if app.restart_attempts != 1 else '' }}</span>
                             {% endif %}
                         </div>
                     </div>
@@ -70,16 +91,16 @@
                 <div class="flex items-center gap-1 shrink-0">
                     {% if app.status == 'running' %}
                         <a href="{{ app.url }}" target="_blank" title="Open"
-                            class="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-accent-600 hover:bg-accent-50 rounded-md transition-colors">
+                            class="w-8 h-8 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-accent-600 dark:hover:text-accent-400 hover:bg-accent-50 dark:hover:bg-accent-950/40 rounded-md transition-colors">
                             <i class="fas fa-arrow-up-right-from-square text-xs"></i>
                         </a>
                         <button onclick="stopApp('{{ app.name }}', this)" data-loading-label="" title="Stop"
-                            class="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
+                            class="w-8 h-8 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-md transition-colors">
                             <i class="fas fa-stop text-xs"></i>
                         </button>
                     {% elif app.status == 'exited' %}
                         <button onclick="startApp('{{ app.name }}', this)" data-loading-label="" title="Start"
-                            class="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors">
+                            class="w-8 h-8 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-md transition-colors">
                             <i class="fas fa-play text-xs"></i>
                         </button>
                     {% elif app.has_dockerfile %}
@@ -87,17 +108,19 @@
                             class="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-accent-600 hover:bg-accent-700 px-3 py-1.5 rounded-md transition-colors">
                             <i class="fas fa-rocket text-[11px]"></i> Deploy
                         </button>
+                    {% elif not app.has_local_dir %}
+                        <span class="text-xs text-gray-400 dark:text-gray-500 italic">awaiting push</span>
                     {% endif %}
 
                     {% if app.status != 'not deployed' %}
                         <button onclick="showLogs('{{ app.name }}')" title="Logs"
-                            class="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">
+                            class="w-8 h-8 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors">
                             <i class="fas fa-terminal text-xs"></i>
                         </button>
                     {% endif %}
 
                     <a href="/app/{{ app.name }}" title="Details"
-                        class="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">
+                        class="w-8 h-8 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors">
                         <i class="fas fa-chevron-right text-xs"></i>
                     </a>
                 </div>
@@ -105,29 +128,60 @@
         </div>
         {% else %}
         <div class="px-5 py-16 text-center">
-            <div class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
-                <i class="fas fa-box-open text-gray-400"></i>
+            <div class="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-box-open text-gray-400 dark:text-gray-500"></i>
             </div>
-            <p class="text-sm font-medium text-gray-700">No applications yet</p>
-            <p class="mt-1 text-sm text-gray-500">Register one to get started:</p>
-            <code class="mt-3 inline-block text-xs font-mono bg-gray-900 text-gray-100 px-3 py-2 rounded-md">python -m launchbox init myapp</code>
+            <p class="text-sm font-medium text-gray-700 dark:text-gray-200">No applications yet</p>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Register one to get started:</p>
+            <button onclick="openNewAppModal()" class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-white bg-accent-600 hover:bg-accent-700 px-3.5 py-2 rounded-lg transition-colors">
+                <i class="fas fa-plus text-xs"></i> New application
+            </button>
         </div>
         {% endfor %}
     </div>
 </div>
 
-<p id="no-results" class="hidden text-center text-sm text-gray-400 mt-6">No applications match your filter.</p>
+<p id="no-results" class="hidden text-center text-sm text-gray-400 dark:text-gray-500 mt-6">No applications match your filter.</p>
+
+{% if recent_activity %}
+<div class="mt-8">
+    <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Recent activity</h2>
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card overflow-hidden">
+        <ul class="divide-y divide-gray-100 dark:divide-gray-800">
+            {% for dep in recent_activity %}
+            <li class="px-5 py-3 flex items-center gap-3 text-sm">
+                {% if dep.status == 'success' %}
+                    <i class="fas fa-circle-check text-emerald-500 text-xs"></i>
+                {% elif dep.status == 'failed' %}
+                    <i class="fas fa-circle-xmark text-red-500 text-xs"></i>
+                {% else %}
+                    <i class="fas fa-spinner text-amber-500 text-xs"></i>
+                {% endif %}
+                <a href="/app/{{ dep.app_name }}" class="font-medium text-gray-900 dark:text-gray-100 hover:text-accent-600 dark:hover:text-accent-400">{{ dep.app_name }}</a>
+                <span class="text-gray-400 dark:text-gray-500 font-mono text-xs">{{ (dep.commit_sha or 'latest')[:9] }}</span>
+                {% if dep.status == 'failed' and dep.error %}
+                    <span class="text-red-500 dark:text-red-400 text-xs truncate flex-1" title="{{ dep.error }}">{{ dep.error }}</span>
+                {% else %}
+                    <span class="flex-1"></span>
+                {% endif %}
+                <span class="text-gray-400 dark:text-gray-500 text-xs shrink-0" data-relative-time="{{ dep.started_at }}">{{ dep.started_at }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}
 
 <!-- Logs Modal -->
 <div id="logsModal" class="fixed inset-0 bg-gray-900/40 backdrop-blur-sm hidden items-center justify-center p-4" style="z-index: 1000;">
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-            <h3 class="text-sm font-semibold text-gray-900" id="logsTitle">Logs</h3>
+    <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100" id="logsTitle">Logs</h3>
             <div class="flex items-center gap-1">
-                <button onclick="refreshLogs()" title="Refresh" class="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-700 rounded-md hover:bg-gray-100">
+                <button onclick="refreshLogs()" title="Refresh" class="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800">
                     <i class="fas fa-arrows-rotate text-xs"></i>
                 </button>
-                <button onclick="closeLogs()" title="Close" class="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-700 rounded-md hover:bg-gray-100">
+                <button onclick="closeLogs()" title="Close" class="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800">
                     <i class="fas fa-xmark text-sm"></i>
                 </button>
             </div>
@@ -137,11 +191,54 @@
         </div>
     </div>
 </div>
+
+<!-- New Application Modal -->
+<div id="newAppModal" class="fixed inset-0 bg-gray-900/40 backdrop-blur-sm hidden items-center justify-center p-4" style="z-index: 1000;">
+    <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">New application</h3>
+            <button onclick="closeNewAppModal()" class="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800">
+                <i class="fas fa-xmark text-sm"></i>
+            </button>
+        </div>
+
+        <div id="newAppForm" class="p-5">
+            <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Application name</label>
+            <input id="new-app-name" type="text" placeholder="my-api"
+                class="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 text-gray-900 dark:text-gray-100 mb-3">
+            <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Default branch</label>
+            <input id="new-app-branch" type="text" value="main"
+                class="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 text-gray-900 dark:text-gray-100 mb-4">
+            <button id="register-btn" onclick="registerApp(this)" data-loading-label="Creating"
+                class="w-full inline-flex items-center justify-center gap-1.5 text-sm font-medium text-white bg-accent-600 hover:bg-accent-700 px-3.5 py-2.5 rounded-lg transition-colors">
+                <i class="fas fa-plus text-xs"></i> Create
+            </button>
+        </div>
+
+        <div id="newAppResult" class="hidden p-5">
+            <p class="text-sm text-gray-700 dark:text-gray-300 mb-3">
+                <i class="fas fa-circle-check text-emerald-500 mr-1"></i>
+                Registered. Push your app to deploy it:
+            </p>
+            <div class="bg-gray-950 rounded-lg p-3 space-y-1.5" id="push-commands"></div>
+            <button onclick="closeNewAppModal(); location.reload();"
+                class="mt-4 w-full text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 px-3.5 py-2.5 rounded-lg transition-colors">
+                Done
+            </button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
     let currentLogsApp = null;
+    let lastAppsFingerprint = null;
+
+    document.querySelectorAll('[data-relative-time]').forEach(el => {
+        const value = el.dataset.relativeTime;
+        if (value) el.textContent = relativeTime(value);
+    });
 
     document.getElementById('app-search').addEventListener('input', (e) => {
         const q = e.target.value.trim().toLowerCase();
@@ -216,11 +313,88 @@
         currentLogsApp = null;
     }
 
+    function openNewAppModal() {
+        document.getElementById('newAppForm').classList.remove('hidden');
+        document.getElementById('newAppResult').classList.add('hidden');
+        document.getElementById('new-app-name').value = '';
+        document.getElementById('newAppModal').classList.remove('hidden');
+        document.getElementById('newAppModal').classList.add('flex');
+        document.getElementById('new-app-name').focus();
+    }
+
+    function closeNewAppModal() {
+        document.getElementById('newAppModal').classList.add('hidden');
+        document.getElementById('newAppModal').classList.remove('flex');
+    }
+
+    async function registerApp(button) {
+        const name = document.getElementById('new-app-name').value.trim();
+        const branch = document.getElementById('new-app-branch').value.trim() || 'main';
+        if (!name) { showToast('Application name is required', 'error'); return; }
+
+        showLoading(button);
+        try {
+            const response = await axios.post('/api/apps', { name, branch });
+            const commandsBox = document.getElementById('push-commands');
+            commandsBox.innerHTML = '';
+            response.data.push_commands.forEach(cmd => {
+                const row = document.createElement('div');
+                row.className = 'flex items-center justify-between gap-2 group';
+                row.innerHTML = `
+                    <code class="text-xs text-gray-100 font-mono truncate">${cmd}</code>
+                    <button class="text-gray-500 hover:text-gray-200 shrink-0" title="Copy">
+                        <i class="fas fa-copy text-xs"></i>
+                    </button>
+                `;
+                row.querySelector('button').addEventListener('click', (e) => copyText(cmd, e.currentTarget));
+                commandsBox.appendChild(row);
+            });
+            document.getElementById('newAppForm').classList.add('hidden');
+            document.getElementById('newAppResult').classList.remove('hidden');
+        } catch (error) {
+            showToast(error.response?.data?.error || 'Failed to register application', 'error');
+        } finally {
+            hideLoading(button);
+        }
+    }
+
     document.getElementById('logsModal').addEventListener('click', (e) => {
         if (e.target.id === 'logsModal') closeLogs();
     });
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closeLogs();
+    document.getElementById('newAppModal').addEventListener('click', (e) => {
+        if (e.target.id === 'newAppModal') closeNewAppModal();
     });
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        closeLogs();
+        closeNewAppModal();
+    });
+
+    // Auto-refresh: poll for status changes and reload only when something
+    // actually changed, and never while a modal is open -- reloading under
+    // someone reading logs or mid-registration would be actively hostile.
+    function appsFingerprint(apps) {
+        return apps.map(a => `${a.name}:${a.status}:${a.health_status}:${a.container_id}:${a.marked_failed}`).join('|');
+    }
+
+    async function pollAppStatus() {
+        if (currentLogsApp || !document.getElementById('newAppModal').classList.contains('hidden')) return;
+        try {
+            const response = await axios.get('/api/apps');
+            const fingerprint = appsFingerprint(response.data);
+            document.getElementById('live-indicator').classList.remove('hidden');
+            if (lastAppsFingerprint !== null && fingerprint !== lastAppsFingerprint) {
+                location.reload();
+                return;
+            }
+            lastAppsFingerprint = fingerprint;
+        } catch (error) {
+            document.getElementById('live-indicator').classList.add('hidden');
+        }
+    }
+
+    lastAppsFingerprint = appsFingerprint({{ apps|tojson }});
+    document.getElementById('live-indicator').classList.remove('hidden');
+    setInterval(pollAppStatus, 5000);
 </script>
 {% endblock %}

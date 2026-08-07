@@ -4,12 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Launchbox{% endblock %}</title>
+
+    <!-- Applied before first paint so switching themes never flashes the wrong one. -->
+    <script>
+        (function () {
+            var saved = localStorage.getItem('lb-theme');
+            if (saved === 'dark') document.documentElement.classList.add('dark');
+        })();
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     fontFamily: {
@@ -36,27 +46,33 @@
         body { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
         .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
         ::selection { background-color: #c7d2fe; }
+        .dark ::selection { background-color: #3730a3; }
     </style>
     {% block head %}{% endblock %}
 </head>
-<body class="bg-gray-50 min-h-screen text-gray-900 antialiased">
-    <nav class="bg-white border-b border-gray-200 sticky top-0 z-40">
+<body class="bg-gray-50 dark:bg-gray-950 min-h-screen text-gray-900 dark:text-gray-100 antialiased transition-colors">
+    <nav class="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-40">
         <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
                 <a href="/" class="flex items-center gap-2.5 group">
                     <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-accent-600 text-white shadow-sm group-hover:bg-accent-700 transition-colors">
                         <i class="fas fa-rocket text-sm"></i>
                     </span>
-                    <span class="font-semibold text-[15px] tracking-tight text-gray-900">Launchbox</span>
+                    <span class="font-semibold text-[15px] tracking-tight text-gray-900 dark:text-gray-100">Launchbox</span>
                 </a>
                 <div class="flex items-center gap-1">
-                    <a href="/" class="text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-1.5 rounded-md transition-colors">
+                    <a href="/" class="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 px-3 py-1.5 rounded-md transition-colors">
                         Applications
                     </a>
-                    <span id="docker-status-pill" class="ml-2 hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 border border-gray-200 rounded-full px-2.5 py-1">
-                        <span class="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
+                    <span id="docker-status-pill" class="ml-2 hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-full px-2.5 py-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600"></span>
                         <span>Docker</span>
                     </span>
+                    <button id="theme-toggle" onclick="toggleTheme()" title="Toggle theme"
+                        class="ml-1 w-9 h-9 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                        <i class="fas fa-moon text-sm dark:hidden"></i>
+                        <i class="fas fa-sun text-sm hidden dark:inline"></i>
+                    </button>
                 </div>
             </div>
         </div>
@@ -68,7 +84,7 @@
                 <div class="mb-6 space-y-2">
                     {% for category, message in messages %}
                         <div class="flex items-start gap-2.5 px-4 py-3 rounded-lg border text-sm
-                            {% if category == 'error' %}bg-red-50 border-red-200 text-red-800{% else %}bg-emerald-50 border-emerald-200 text-emerald-800{% endif %}">
+                            {% if category == 'error' %}bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-900 text-red-800 dark:text-red-300{% else %}bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900 text-emerald-800 dark:text-emerald-300{% endif %}">
                             <i class="fas {% if category == 'error' %}fa-circle-exclamation{% else %}fa-circle-check{% endif %} mt-0.5"></i>
                             <span>{{ message }}</span>
                         </div>
@@ -83,6 +99,11 @@
     <div id="toast-stack" class="fixed top-4 right-4 z-50 flex flex-col gap-2 items-end"></div>
 
     <script>
+        function toggleTheme() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            localStorage.setItem('lb-theme', isDark ? 'dark' : 'light');
+        }
+
         function showLoading(button) {
             if (!button) return;
             button.dataset.originalHtml = button.innerHTML;
@@ -102,16 +123,16 @@
             const stack = document.getElementById('toast-stack');
             const toast = document.createElement('div');
             const styles = {
-                success: { bg: 'bg-white', border: 'border-emerald-200', icon: 'fa-circle-check', iconColor: 'text-emerald-500' },
-                error: { bg: 'bg-white', border: 'border-red-200', icon: 'fa-circle-exclamation', iconColor: 'text-red-500' },
-                info: { bg: 'bg-white', border: 'border-gray-200', icon: 'fa-circle-info', iconColor: 'text-accent-500' },
+                success: { icon: 'fa-circle-check', iconColor: 'text-emerald-500', border: 'border-emerald-200 dark:border-emerald-900' },
+                error: { icon: 'fa-circle-exclamation', iconColor: 'text-red-500', border: 'border-red-200 dark:border-red-900' },
+                info: { icon: 'fa-circle-info', iconColor: 'text-accent-500', border: 'border-gray-200 dark:border-gray-700' },
             };
             const s = styles[type] || styles.info;
-            toast.className = `flex items-start gap-2.5 ${s.bg} border ${s.border} shadow-lg rounded-lg px-4 py-3 text-sm text-gray-800 max-w-sm transition-all duration-200 translate-x-2 opacity-0`;
+            toast.className = `flex items-start gap-2.5 bg-white dark:bg-gray-800 border ${s.border} shadow-lg rounded-lg px-4 py-3 text-sm text-gray-800 dark:text-gray-100 max-w-sm transition-all duration-200 translate-x-2 opacity-0`;
             toast.innerHTML = `
                 <i class="fas ${s.icon} ${s.iconColor} mt-0.5"></i>
                 <span class="flex-1">${message}</span>
-                <button class="text-gray-400 hover:text-gray-600" aria-label="Dismiss">
+                <button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" aria-label="Dismiss">
                     <i class="fas fa-xmark"></i>
                 </button>
             `;
@@ -137,6 +158,15 @@
             if (hours < 24) return `${hours}h ago`;
             const days = Math.floor(hours / 24);
             return `${days}d ago`;
+        }
+
+        function copyText(text, button) {
+            navigator.clipboard.writeText(text).then(() => {
+                if (!button) { showToast('Copied to clipboard', 'success'); return; }
+                const original = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check text-emerald-500"></i>';
+                setTimeout(() => { button.innerHTML = original; }, 1200);
+            }).catch(() => showToast('Could not copy — select and copy manually', 'error'));
         }
 
         (function checkDockerStatus() {

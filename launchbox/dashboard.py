@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify, flash, redirect, url_for
 import docker
+import json
 import subprocess
 import os
 from pathlib import Path
@@ -7,6 +8,7 @@ from datetime import datetime
 from launchbox.config import APPS_DIR, REPOS_DIR
 from launchbox.config_parser import LaunchboxConfig
 from launchbox.deploy import deploy, remove_app, rollback
+from launchbox.init import init as init_app
 from launchbox.ssl_manager import SSLManager
 from launchbox.logger import setup_logger, LaunchboxError
 from launchbox.state import StateStore
@@ -47,17 +49,124 @@ def get_docker_client():
         logger.error(f"Failed to connect to Docker: {e}")
         return None
 
+def _health_label(container):
+    """A human status distinguishing Docker's HEALTHCHECK from run state.
+
+    ``container.status`` alone only says running/exited/created -- it cannot
+    tell "running, health probe passing" from "running, health probe
+    failing", which is exactly the distinction the health-gated deploy and
+    the supervisor both act on. Only trusted while the container is
+    actually running: a stopped container's last-known Health.Status is
+    stale and must not override the fact that it is not running.
+    """
+    status = container.status
+    if status != 'running':
+        return status
+
+    health = container.attrs.get('State', {}).get('Health')
+    if not health:
+        return 'running'
+
+    probe_status = health.get('Status')
+    if probe_status == 'healthy':
+        return 'healthy'
+    if probe_status == 'unhealthy':
+        return 'unhealthy'
+    if probe_status == 'starting':
+        return 'starting'
+    return 'running'
+
+
+def _base_app_info(name, path=None):
+    return {
+        'name': name,
+        'path': path,
+        'has_local_dir': path is not None,
+        'has_dockerfile': False,
+        'has_config': False,
+        'status': 'unknown',
+        'health_status': 'unknown',
+        'container_id': None,
+        'created': None,
+        'port': 3000,
+        'url': f"http://{name}.localhost",
+        'health_state': None,
+        'marked_failed': False,
+        'restart_attempts': 0,
+        'has_repo': os.path.isdir(os.path.join(REPOS_DIR, f"{name}.git")),
+    }
+
+
+def _apply_config_from_mapping(app_info, mapping):
+    """Fill in port/HTTPS from an already-parsed launchbox.yaml mapping.
+
+    Used both for apps with a local launchbox.yaml and for git-push-only
+    apps, whose resolved configuration was captured on their deployment row
+    instead (see LaunchboxConfig.from_mapping).
+    """
+    app_section = (mapping or {}).get('app', {}) or {}
+    https_section = (mapping or {}).get('https', {}) or {}
+    if app_section.get('port'):
+        app_info['port'] = app_section['port']
+    if https_section.get('enabled'):
+        app_info['url'] = f"https://{app_info['name']}.localhost"
+
+
+def _apply_state_row(app_info, state_row):
+    if not state_row:
+        return
+    app_info['health_state'] = state_row.get('health_state')
+    app_info['marked_failed'] = bool(state_row.get('marked_failed'))
+    app_info['restart_attempts'] = int(state_row.get('restart_attempts') or 0)
+
+
+def _apply_container_info(app_info, store):
+    client = get_docker_client()
+    if not client:
+        return
+    try:
+        container = client.containers.get(
+            resolve_container_name(app_info['name'], store=store)
+        )
+        app_info['status'] = container.status
+        app_info['health_status'] = _health_label(container)
+        app_info['container_id'] = container.id[:12]
+        app_info['created'] = container.attrs['Created']
+    except docker.errors.NotFound:
+        app_info['status'] = 'not deployed'
+        app_info['health_status'] = 'not deployed'
+    except Exception as e:
+        logger.warning(f"Failed to get container info for {app_info['name']}: {e}")
+
+
 def get_app_list():
-    """Get list of applications"""
-    apps = []
+    """Every known application: on-disk (apps/<name>/) union deployed-via-git-push.
+
+    An application built and deployed purely by `git push` never gets a
+    apps/<name> directory on the Launchbox host -- the hook builds from a
+    temporary worktree -- so listing only apps/ left every such application
+    invisible. The state store's `apps` table is the other half of the
+    picture: every application that has ever been registered or deployed has
+    a row there, directory or not.
+    """
+    by_name = {}
+
     apps_path = Path(APPS_DIR)
+    if apps_path.exists():
+        for app_dir in apps_path.iterdir():
+            if not app_dir.is_dir():
+                continue
+            info = _base_app_info(app_dir.name, path=str(app_dir))
+            info['has_dockerfile'] = (app_dir / 'Dockerfile').exists()
+            info['has_config'] = (app_dir / 'launchbox.yaml').exists()
+            if info['has_config']:
+                try:
+                    config = LaunchboxConfig(str(app_dir))
+                    _apply_config_from_mapping(info, config.config)
+                except Exception as e:
+                    logger.warning(f"Failed to load config for {app_dir.name}: {e}")
+            by_name[app_dir.name] = info
 
-    if not apps_path.exists():
-        return apps
-
-    # One store for the whole listing rather than one per app: each
-    # resolve_container_name call and each health lookup below would
-    # otherwise open its own sqlite connection.
     try:
         store = StateStore()
     except Exception as e:
@@ -65,71 +174,42 @@ def get_app_list():
         store = None
 
     try:
-        for app_dir in apps_path.iterdir():
-            if app_dir.is_dir():
-                app_info = {
-                    'name': app_dir.name,
-                    'path': str(app_dir),
-                    'has_dockerfile': (app_dir / 'Dockerfile').exists(),
-                    'has_config': (app_dir / 'launchbox.yaml').exists(),
-                    'status': 'unknown',
-                    'container_id': None,
-                    'created': None,
-                    'port': 3000,
-                    'url': f"http://{app_dir.name}.localhost",
-                    'health_state': None,
-                    'marked_failed': False,
-                }
+        if store is not None:
+            for state_row in store.list_apps():
+                name = state_row['app_name']
+                if name not in by_name:
+                    info = _base_app_info(name, path=None)
+                    # No local directory to read a config from -- the
+                    # closest thing to it is what the last deployment
+                    # actually ran with.
+                    current_deployment = state_row.get('current_deployment')
+                    if current_deployment:
+                        try:
+                            deployment = store.get_deployment(current_deployment)
+                            raw_config = (deployment or {}).get('config_json')
+                            if raw_config:
+                                _apply_config_from_mapping(info, json.loads(raw_config))
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to load recorded config for {name}: {e}"
+                            )
+                    by_name[name] = info
 
-                # Get configuration if available
-                if app_info['has_config']:
-                    try:
-                        config = LaunchboxConfig(str(app_dir))
-                        app_info['port'] = config.get_port()
-                        if config.is_https_enabled():
-                            app_info['url'] = f"https://{app_dir.name}.localhost"
-                    except Exception as e:
-                        logger.warning(f"Failed to load config for {app_dir.name}: {e}")
+                _apply_state_row(by_name[name], state_row)
 
-                # Supervisor-tracked health, independent of Docker's own
-                # container status below -- this is what lets the dashboard
-                # show an app the supervisor gave up restarting.
-                if store is not None:
-                    try:
-                        state_row = store.get_app(app_dir.name)
-                        if state_row:
-                            app_info['health_state'] = state_row.get('health_state')
-                            app_info['marked_failed'] = bool(state_row.get('marked_failed'))
-                    except Exception as e:
-                        logger.warning(f"Failed to read state for {app_dir.name}: {e}")
-
-                # Get container status
-                client = get_docker_client()
-                if client:
-                    try:
-                        container = client.containers.get(
-                            resolve_container_name(app_dir.name, store=store)
-                        )
-                        app_info['status'] = container.status
-                        app_info['container_id'] = container.id[:12]
-                        app_info['created'] = container.attrs['Created']
-                    except docker.errors.NotFound:
-                        app_info['status'] = 'not deployed'
-                    except Exception as e:
-                        logger.warning(f"Failed to get container info for {app_dir.name}: {e}")
-
-                apps.append(app_info)
+        for info in by_name.values():
+            _apply_container_info(info, store)
     finally:
         if store is not None:
             store.close()
 
-    return sorted(apps, key=lambda x: x['name'])
+    return sorted(by_name.values(), key=lambda x: x['name'])
 
 @app.route('/')
 def dashboard():
     """Main dashboard"""
     apps = get_app_list()
-    
+
     # Get Docker system info
     client = get_docker_client()
     docker_info = None
@@ -138,13 +218,52 @@ def dashboard():
             docker_info = client.info()
         except Exception as e:
             logger.warning(f"Failed to get Docker info: {e}")
-    
-    return render_template('dashboard.html', apps=apps, docker_info=docker_info)
+
+    recent_activity = []
+    try:
+        with StateStore() as store:
+            recent_activity = store.list_recent_deployments(limit=12)
+    except Exception as e:
+        logger.warning(f"Failed to load recent activity: {e}")
+
+    return render_template('dashboard.html', apps=apps, docker_info=docker_info,
+                          recent_activity=recent_activity)
 
 @app.route('/api/apps')
 def api_apps():
     """API endpoint to get apps"""
     return jsonify(get_app_list())
+
+@app.route('/api/apps', methods=['POST'])
+def api_register_app():
+    """Register a new application: creates its bare repo and git hook.
+
+    This is what `launchbox init <app>` does from the CLI. The application
+    becomes visible immediately (see StateStore.register), showing "not
+    deployed" until its first push.
+    """
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get('name') or '').strip()
+    branch = (payload.get('branch') or 'main').strip()
+
+    try:
+        repo_path = init_app(name, default_branch=branch)
+        return jsonify({
+            'message': f'Registered {name}',
+            'name': name,
+            'repo_path': repo_path,
+            'push_commands': [
+                f'git remote add launchbox {repo_path}',
+                f'git push launchbox {branch}',
+            ],
+        }), 201
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except LaunchboxError as e:
+        return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        logger.error(f"Failed to register {name}: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/apps/<app_name>/deploy', methods=['POST'])
 def api_deploy_app(app_name):
@@ -313,25 +432,66 @@ def app_detail(app_name):
         except Exception as e:
             logger.warning(f"Failed to load config details: {e}")
 
-    # Deployment history and which row is currently live, so the template can
-    # offer "Roll back" on every successful row except the current one.
+    # Deployment history, which row is currently live (so the template can
+    # offer "Roll back" on every successful row except that one), and the
+    # database this app was provisioned with, if any.
     history = []
     current_deployment_id = None
+    database_info = None
     try:
         with StateStore() as store:
             history = store.list_deployments(app_name, limit=20)
             state_row = store.get_app(app_name)
             if state_row:
                 current_deployment_id = state_row.get('current_deployment')
+
+                # Apps deployed purely via git push have no local
+                # launchbox.yaml to read config_info from above -- the
+                # config actually used is on their deployment row instead.
+                if config_info is None and current_deployment_id:
+                    deployment = store.get_deployment(current_deployment_id)
+                    raw_config = (deployment or {}).get('config_json')
+                    if raw_config:
+                        try:
+                            mapping = json.loads(raw_config)
+                            config_info = {
+                                'port': mapping.get('app', {}).get('port', 3000),
+                                'environment': {},
+                                'resources': mapping.get('resources', {}),
+                                'database_enabled': mapping.get('database', {}).get('enabled', False),
+                                'https_enabled': mapping.get('https', {}).get('enabled', False),
+                            }
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to parse recorded config for {app_name}: {e}"
+                            )
+
+            db_row = store.get_database(app_name)
+            if db_row:
+                default_ports = {
+                    'postgresql': 5432, 'mysql': 3306, 'mongodb': 27017,
+                }
+                database_info = {
+                    'engine': db_row['engine'],
+                    'host': db_row['container_name'],
+                    'port': default_ports.get(db_row['engine']),
+                    'name': db_row['db_name'],
+                    'username': db_row['username'],
+                    # Password is deliberately never sent to the browser.
+                }
     except Exception as e:
         logger.warning(f"Failed to load deployment history for {app_name}: {e}")
+
+    repo_path = os.path.join(REPOS_DIR, f"{app_name}.git") if app_info['has_repo'] else None
 
     return render_template('app_detail.html',
                          app=app_info,
                          container=container_info,
                          config=config_info,
                          history=history,
-                         current_deployment_id=current_deployment_id)
+                         current_deployment_id=current_deployment_id,
+                         database=database_info,
+                         repo_path=repo_path)
 
 def main():
     """Entry point used by ``python3 -m launchbox dashboard``."""

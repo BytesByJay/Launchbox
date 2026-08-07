@@ -566,3 +566,226 @@ def test_rollback_endpoint_reports_a_failed_health_probe(client, mocker):
 
     assert response.status_code == 500
     assert 'health probe failed' in response.get_json()['error']
+
+
+# ---------------------------------------------------------- health extraction
+
+
+def test_health_label_prefers_the_healthcheck_status_when_running(
+    client, mocker, dashboard_state
+):
+    from launchbox import dashboard as dashboard_module
+
+    container = _FakeContainer("myapp-abc1234")
+    container.attrs["State"]["Health"] = {"Status": "unhealthy"}
+    mocker.patch.object(dashboard_module, "get_docker_client",
+                        return_value=_FakeClient({"myapp-abc1234": container}))
+
+    apps = client.get('/api/apps').get_json()
+    myapp = next(a for a in apps if a["name"] == "myapp")
+
+    assert myapp["health_status"] == "unhealthy"
+    assert myapp["status"] == "running", (
+        "Docker's run state and the HEALTHCHECK state are different things"
+    )
+
+
+def test_health_label_ignores_stale_health_on_a_stopped_container(
+    client, mocker, dashboard_state
+):
+    """A container's last-known Health.Status survives after it stops; that
+    stale value must never override the fact that it is not running.
+    """
+    from launchbox import dashboard as dashboard_module
+
+    container = _FakeContainer("myapp-abc1234")
+    container.status = "exited"
+    container.attrs["State"]["Health"] = {"Status": "unhealthy"}
+    mocker.patch.object(dashboard_module, "get_docker_client",
+                        return_value=_FakeClient({"myapp-abc1234": container}))
+
+    apps = client.get('/api/apps').get_json()
+    myapp = next(a for a in apps if a["name"] == "myapp")
+
+    assert myapp["health_status"] == "exited"
+
+
+def test_health_label_is_healthy_for_a_passing_probe(client, fake_client,
+                                                      dashboard_state):
+    fake_client.containers.known["myapp-abc1234"].attrs["State"]["Health"] = {
+        "Status": "healthy"
+    }
+
+    apps = client.get('/api/apps').get_json()
+    myapp = next(a for a in apps if a["name"] == "myapp")
+
+    assert myapp["health_status"] == "healthy"
+
+
+def test_health_label_is_running_for_a_container_with_no_healthcheck(
+    client, fake_client, dashboard_state
+):
+    apps = client.get('/api/apps').get_json()
+    myapp = next(a for a in apps if a["name"] == "myapp")
+
+    assert myapp["health_status"] == "running"
+
+
+# ------------------------------------------------------------ git-push visibility
+
+
+def test_app_list_includes_a_git_push_only_app(client, fake_client, deployed,
+                                               mocker):
+    """An app deployed purely via `git push` has no apps/<name> directory on
+    the Launchbox host -- it must still appear.
+    """
+    from launchbox import dashboard as dashboard_module
+
+    deployed.register("gitpushapp")
+    mocker.patch.object(
+        dashboard_module, "StateStore",
+        lambda *a, **k: StateStore(deployed.db_path)
+    )
+
+    apps = client.get('/api/apps').get_json()
+    names = [a["name"] for a in apps]
+
+    assert "gitpushapp" in names
+    ghost = next(a for a in apps if a["name"] == "gitpushapp")
+    assert ghost["has_local_dir"] is False
+    assert ghost["status"] == "not deployed"
+
+
+def test_git_push_only_app_reads_its_config_from_the_deployment_row(
+    client, fake_client, store, mocker
+):
+    from launchbox import dashboard as dashboard_module
+
+    config_json = json.dumps({"app": {"port": 9000}, "https": {"enabled": True}})
+    dep = store.record_start("gitpushapp", "abc1234", config_json=config_json)
+    store.record_success(dep, "gitpushapp-abc1234",
+                         "launchbox-gitpushapp:abc1234")
+    mocker.patch.object(
+        dashboard_module, "StateStore",
+        lambda *a, **k: StateStore(store.db_path)
+    )
+
+    apps = client.get('/api/apps').get_json()
+    ghost = next(a for a in apps if a["name"] == "gitpushapp")
+
+    assert ghost["port"] == 9000
+    assert ghost["url"] == "https://gitpushapp.localhost"
+
+
+def test_locally_present_app_is_not_duplicated_by_the_state_union(
+    client, fake_client, dashboard_state
+):
+    apps = client.get('/api/apps').get_json()
+    names = [a["name"] for a in apps]
+
+    assert names.count("myapp") == 1
+
+
+# --------------------------------------------------------------- registration
+
+
+def test_register_endpoint_delegates_to_init(client, mocker):
+    from launchbox import dashboard as dashboard_module
+
+    init_mock = mocker.patch.object(dashboard_module, "init_app",
+                                    return_value="/data/repos/newapp.git")
+
+    response = client.post('/api/apps', json={"name": "newapp",
+                                              "branch": "main"})
+
+    assert response.status_code == 201
+    init_mock.assert_called_once_with("newapp", default_branch="main")
+    body = response.get_json()
+    assert body["repo_path"] == "/data/repos/newapp.git"
+    assert any("git push launchbox main" in c for c in body["push_commands"])
+
+
+def test_register_endpoint_defaults_branch_to_main(client, mocker):
+    from launchbox import dashboard as dashboard_module
+
+    init_mock = mocker.patch.object(dashboard_module, "init_app",
+                                    return_value="/data/repos/newapp.git")
+
+    client.post('/api/apps', json={"name": "newapp"})
+
+    init_mock.assert_called_once_with("newapp", default_branch="main")
+
+
+def test_register_endpoint_rejects_an_invalid_name(client, mocker):
+    from launchbox import dashboard as dashboard_module
+
+    mocker.patch.object(dashboard_module, "init_app",
+                        side_effect=ValueError("Invalid application name"))
+
+    response = client.post('/api/apps', json={"name": "bad name!"})
+
+    assert response.status_code == 400
+
+
+def test_register_endpoint_rejects_an_empty_name(client, mocker):
+    from launchbox import dashboard as dashboard_module
+
+    mocker.patch.object(dashboard_module, "init_app",
+                        side_effect=ValueError("Invalid application name"))
+
+    response = client.post('/api/apps', json={"name": ""})
+
+    assert response.status_code == 400
+
+
+# ------------------------------------------------------------------ database
+
+
+def test_detail_page_shows_the_database_panel(client, fake_client, deployed,
+                                              mocker):
+    from launchbox import dashboard as dashboard_module
+
+    deployed.record_database("myapp", "postgresql", "myapp_postgres",
+                             "myapp_vol", "myapp_db", "lb_myapp", "s3cret")
+    mocker.patch.object(dashboard_module, "StateStore",
+                        lambda *a, **k: StateStore(deployed.db_path))
+
+    response = client.get('/app/myapp')
+    body = response.get_data(as_text=True)
+    assert "myapp_postgres" in body
+    assert "5432" in body
+    assert "myapp_db" in body
+    assert "s3cret" not in body, "the database password must never reach the browser"
+
+
+def test_detail_page_has_no_database_panel_when_none_is_provisioned(
+    client, fake_client, dashboard_state
+):
+    response = client.get('/app/myapp')
+    body = response.get_data(as_text=True)
+
+    assert "Database" not in body or "postgres" not in body.lower()
+
+
+# -------------------------------------------------------------- recent activity
+
+
+def test_homepage_shows_recent_activity(client, fake_client, dashboard_state):
+    response = client.get('/')
+    body = response.get_data(as_text=True)
+
+    assert "Recent activity" in body
+    assert "myapp" in body
+
+
+def test_homepage_activity_feed_survives_a_broken_state_store(
+    client, fake_client, mocker
+):
+    from launchbox import dashboard as dashboard_module
+
+    mocker.patch.object(dashboard_module, "StateStore",
+                        side_effect=RuntimeError("database is locked"))
+
+    response = client.get('/')
+
+    assert response.status_code == 200

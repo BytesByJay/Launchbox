@@ -5,6 +5,7 @@ import subprocess
 import pytest
 
 from launchbox import init as init_module
+from launchbox.state import StateStore
 
 
 def test_hook_sets_strict_bash_flags():
@@ -70,6 +71,10 @@ def test_init_creates_a_bare_repo_with_an_executable_hook(tmp_path, monkeypatch)
     repos.mkdir()
     monkeypatch.setattr(init_module, "REPOS_DIR", str(repos))
     monkeypatch.setattr(init_module, "BASE_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        init_module, "StateStore",
+        lambda *a, **k: StateStore(str(tmp_path / "state.db")),
+    )
 
     repo_path = init_module.init("myapp")
 
@@ -88,6 +93,10 @@ def test_init_is_idempotent(tmp_path, monkeypatch):
     repos.mkdir()
     monkeypatch.setattr(init_module, "REPOS_DIR", str(repos))
     monkeypatch.setattr(init_module, "BASE_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        init_module, "StateStore",
+        lambda *a, **k: StateStore(str(tmp_path / "state.db")),
+    )
 
     first = init_module.init("myapp")
     second = init_module.init("myapp")
@@ -101,6 +110,10 @@ def test_init_rewrites_the_hook_on_reinitialisation(tmp_path, monkeypatch):
     repos.mkdir()
     monkeypatch.setattr(init_module, "REPOS_DIR", str(repos))
     monkeypatch.setattr(init_module, "BASE_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        init_module, "StateStore",
+        lambda *a, **k: StateStore(str(tmp_path / "state.db")),
+    )
 
     repo_path = init_module.init("myapp")
     hook_path = os.path.join(repo_path, "hooks", "post-receive")
@@ -212,3 +225,50 @@ def test_hook_ignores_non_default_branch_without_running_deploy(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert "Ignoring push" in result.stdout + result.stderr
+
+
+# ------------------------------------------------------ registration visibility
+
+
+def test_init_registers_the_app_in_state_before_any_push(tmp_path, monkeypatch):
+    """A freshly registered app must be visible (as 'not deployed') rather
+    than invisible until its first successful push.
+    """
+    repos = tmp_path / "repos"
+    repos.mkdir()
+    monkeypatch.setattr(init_module, "REPOS_DIR", str(repos))
+    monkeypatch.setattr(init_module, "BASE_DIR", str(tmp_path))
+    store_path = str(tmp_path / "state.db")
+    monkeypatch.setattr(
+        init_module, "StateStore", lambda *a, **k: StateStore(store_path)
+    )
+
+    init_module.init("freshapp")
+
+    store = StateStore(store_path)
+    try:
+        app = store.get_app("freshapp")
+        assert app is not None
+        assert app["current_container"] is None
+    finally:
+        store.close()
+
+
+def test_init_registration_failure_does_not_break_registration(
+    tmp_path, monkeypatch
+):
+    """A broken state store must not stop the repo/hook from being created --
+    registration is the primary job here, visibility is secondary.
+    """
+    repos = tmp_path / "repos"
+    repos.mkdir()
+    monkeypatch.setattr(init_module, "REPOS_DIR", str(repos))
+    monkeypatch.setattr(init_module, "BASE_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        init_module, "StateStore",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("database is locked")),
+    )
+
+    repo_path = init_module.init("freshapp")
+
+    assert os.path.isdir(repo_path)

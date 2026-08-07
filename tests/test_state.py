@@ -397,3 +397,64 @@ def test_find_by_sha_matches_a_literal_underscore_when_present(store):
 
     assert store.find_successful_deployment_by_sha("myapp", "a_b")["id"] == dep
     assert store.find_successful_deployment_by_sha("myapp", "axb") is None
+
+
+# --------------------------------------------------------- register / activity
+
+
+def test_register_makes_an_app_visible_before_any_deployment(store):
+    assert store.get_app("freshapp") is None
+
+    store.register("freshapp")
+
+    app = store.get_app("freshapp")
+    assert app is not None
+    assert app["current_container"] is None
+    assert app["current_image"] is None
+
+
+def test_register_is_idempotent(store):
+    store.register("freshapp")
+    store.register("freshapp")
+
+    assert len(store.list_apps()) == 1
+
+
+def test_register_does_not_disturb_an_already_deployed_app(store):
+    dep = store.record_start("myapp", "abc1234")
+    store.record_success(dep, "myapp-abc1234", "launchbox-myapp:abc1234")
+
+    store.register("myapp")
+
+    assert store.current_container("myapp") == "myapp-abc1234"
+
+
+def test_list_recent_deployments_spans_every_app_newest_first(store):
+    for app_name, sha in [("alpha", "1111111"), ("beta", "2222222"),
+                          ("alpha", "3333333")]:
+        dep = store.record_start(app_name, sha)
+        store.record_success(dep, f"{app_name}-{sha}",
+                             f"launchbox-{app_name}:{sha}")
+
+    recent = store.list_recent_deployments(limit=10)
+
+    assert [r["commit_sha"] for r in recent] == ["3333333", "2222222", "1111111"]
+    assert [r["app_name"] for r in recent] == ["alpha", "beta", "alpha"]
+
+
+def test_list_recent_deployments_respects_the_limit(store):
+    for i in range(5):
+        dep = store.record_start("myapp", f"sha{i}")
+        store.record_success(dep, f"myapp-sha{i}", f"launchbox-myapp:sha{i}")
+
+    assert len(store.list_recent_deployments(limit=2)) == 2
+
+
+def test_list_recent_deployments_includes_failures(store):
+    dep = store.record_start("myapp", "bad0000")
+    store.record_failure(dep, "build failed")
+
+    recent = store.list_recent_deployments()
+
+    assert recent[0]["status"] == "failed"
+    assert recent[0]["error"] == "build failed"
