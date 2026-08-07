@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}{{ app.name }} · Launchbox{% endblock %}
+
+{% block content %}
+<nav class="text-sm text-gray-500 mb-4 flex items-center gap-2">
+    <a href="/" class="hover:text-gray-700">Applications</a>
+    <i class="fas fa-chevron-right text-[10px] text-gray-300"></i>
+    <span class="text-gray-900 font-medium">{{ app.name }}</span>
+</nav>
+
+<div class="flex items-start justify-between mb-6 flex-wrap gap-4">
+    <div class="flex items-center gap-3">
+        {% if app.marked_failed %}
+            <span class="w-3 h-3 rounded-full bg-red-500 shrink-0"></span>
+        {% elif app.status == 'running' %}
+            <span class="w-3 h-3 rounded-full bg-emerald-500 shrink-0"></span>
+        {% elif app.status == 'not deployed' %}
+            <span class="w-3 h-3 rounded-full bg-gray-300 shrink-0"></span>
+        {% else %}
+            <span class="w-3 h-3 rounded-full bg-amber-400 shrink-0"></span>
+        {% endif %}
+        <div>
+            <h1 class="text-2xl font-semibold tracking-tight text-gray-900">{{ app.name }}</h1>
+            <p class="text-sm text-gray-500 font-mono mt-0.5">{{ app.status|title }}{% if app.container_id %} · {{ app.container_id[:12] }}{% endif %}</p>
+        </div>
+    </div>
+    <div class="flex items-center gap-2">
+        {% if app.status == 'running' %}
+            <a href="{{ app.url }}" target="_blank"
+                class="inline-flex items-center gap-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 px-3.5 py-2 rounded-lg transition-colors">
+                <i class="fas fa-arrow-up-right-from-square text-xs"></i> Open
+            </a>
+        {% endif %}
+        {% if app.has_dockerfile %}
+            <button id="deploy-btn" onclick="deployApp('{{ app.name }}', this)" data-loading-label="Deploying"
+                class="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-accent-600 hover:bg-accent-700 px-3.5 py-2 rounded-lg transition-colors">
+                <i class="fas fa-rocket text-xs"></i> Deploy
+            </button>
+        {% endif %}
+        <button id="remove-btn" onclick="removeApp('{{ app.name }}', this)" data-loading-label="Removing"
+            class="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 bg-white border border-red-200 hover:bg-red-50 px-3.5 py-2 rounded-lg transition-colors">
+            <i class="fas fa-trash text-xs"></i> Remove
+        </button>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+    <div class="bg-white border border-gray-200 rounded-xl shadow-card p-5">
+        <h2 class="text-sm font-semibold text-gray-900 mb-4">Configuration</h2>
+        {% if config %}
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between"><dt class="text-gray-500">Port</dt><dd class="font-mono text-gray-900">{{ config.port }}</dd></div>
+                <div class="flex justify-between"><dt class="text-gray-500">HTTPS</dt><dd class="text-gray-900">{{ 'Enabled' if config.https_enabled else 'Disabled' }}</dd></div>
+                <div class="flex justify-between"><dt class="text-gray-500">Database</dt><dd class="text-gray-900">{{ 'Enabled' if config.database_enabled else 'Disabled' }}</dd></div>
+                {% if config.resources %}
+                    {% for key, value in config.resources.items() %}
+                        <div class="flex justify-between"><dt class="text-gray-500">{{ key|title }} limit</dt><dd class="font-mono text-gray-900">{{ value }}</dd></div>
+                    {% endfor %}
+                {% endif %}
+                {% if config.environment %}
+                    <div class="pt-2 border-t border-gray-100">
+                        <dt class="text-gray-500 mb-1.5">Environment</dt>
+                        <dd class="space-y-1">
+                            {% for key in config.environment.keys() %}
+                                <div class="font-mono text-xs bg-gray-50 border border-gray-100 rounded px-2 py-1 text-gray-700">{{ key }}</div>
+                            {% endfor %}
+                        </dd>
+                    </div>
+                {% endif %}
+            </dl>
+        {% else %}
+            <p class="text-sm text-gray-400">No launchbox.yaml found for this application.</p>
+        {% endif %}
+    </div>
+
+    <div class="bg-white border border-gray-200 rounded-xl shadow-card p-5">
+        <h2 class="text-sm font-semibold text-gray-900 mb-4">Container</h2>
+        {% if container %}
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500 shrink-0">ID</dt><dd class="font-mono text-gray-900 truncate">{{ container.id[:12] }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500 shrink-0">Image</dt><dd class="font-mono text-gray-900 truncate" title="{{ container.image }}">{{ container.image }}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500 shrink-0">Created</dt><dd class="text-gray-900" data-relative-time="{{ container.created }}">{{ container.created }}</dd></div>
+                {% if container.started %}
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500 shrink-0">Started</dt><dd class="text-gray-900" data-relative-time="{{ container.started }}">{{ container.started }}</dd></div>
+                {% endif %}
+            </dl>
+        {% else %}
+            <p class="text-sm text-gray-400">Not currently deployed.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="bg-white border border-gray-200 rounded-xl shadow-card overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-100">
+        <h2 class="text-sm font-semibold text-gray-900">Deployment history</h2>
+    </div>
+    {% if history %}
+        <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-left text-xs text-gray-500 border-b border-gray-100">
+                    <th class="px-5 py-2.5 font-medium">Commit</th>
+                    <th class="px-5 py-2.5 font-medium">Status</th>
+                    <th class="px-5 py-2.5 font-medium">Started</th>
+                    <th class="px-5 py-2.5 font-medium">Detail</th>
+                    <th class="px-5 py-2.5 font-medium text-right">Action</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+                {% for dep in history %}
+                <tr class="hover:bg-gray-50/60">
+                    <td class="px-5 py-3 font-mono text-gray-900">{{ (dep.commit_sha or 'latest')[:9] }}</td>
+                    <td class="px-5 py-3">
+                        {% if dep.status == 'success' %}
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <i class="fas fa-check text-[10px]"></i> Success
+                            </span>
+                        {% elif dep.status == 'failed' %}
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+                                <i class="fas fa-xmark text-[10px]"></i> Failed
+                            </span>
+                        {% else %}
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                                <i class="fas fa-spinner text-[10px]"></i> In progress
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td class="px-5 py-3 text-gray-500" data-relative-time="{{ dep.started_at }}">{{ dep.started_at }}</td>
+                    <td class="px-5 py-3 text-gray-500 max-w-xs truncate" title="{{ dep.error or '' }}">
+                        {{ dep.error or '—' }}
+                    </td>
+                    <td class="px-5 py-3 text-right">
+                        {% if dep.status == 'success' and dep.id != current_deployment_id %}
+                            <button onclick="rollbackTo('{{ app.name }}', '{{ dep.commit_sha }}', this)" data-loading-label="Rolling back"
+                                class="inline-flex items-center gap-1.5 text-xs font-medium text-accent-700 bg-accent-50 hover:bg-accent-100 px-2.5 py-1 rounded-md transition-colors">
+                                <i class="fas fa-clock-rotate-left text-[10px]"></i> Roll back
+                            </button>
+                        {% elif dep.id == current_deployment_id %}
+                            <span class="text-xs text-gray-400 font-medium">Current</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    {% else %}
+        <p class="px-5 py-8 text-center text-sm text-gray-400">No deployments recorded yet.</p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.querySelectorAll('[data-relative-time]').forEach(el => {
+        const value = el.dataset.relativeTime;
+        if (value) el.textContent = relativeTime(value);
+    });
+
+    async function deployApp(appName, button) {
+        showLoading(button);
+        try {
+            await axios.post(`/api/apps/${appName}/deploy`);
+            showToast(`Deployed <strong>${appName}</strong>`, 'success');
+            setTimeout(() => location.reload(), 1200);
+        } catch (error) {
+            showToast(error.response?.data?.error || `Failed to deploy ${appName}`, 'error');
+            hideLoading(button);
+        }
+    }
+
+    async function removeApp(appName, button) {
+        if (!confirm(`Remove ${appName}? This stops and deletes its containers and images. The database, if any, is kept.`)) return;
+        showLoading(button);
+        try {
+            await axios.delete(`/api/apps/${appName}/remove`);
+            showToast(`Removed <strong>${appName}</strong>`, 'success');
+            setTimeout(() => { window.location.href = '/'; }, 800);
+        } catch (error) {
+            showToast(error.response?.data?.error || `Failed to remove ${appName}`, 'error');
+            hideLoading(button);
+        }
+    }
+
+    async function rollbackTo(appName, commitSha, button) {
+        if (!confirm(`Roll ${appName} back to ${commitSha.slice(0, 9)}? This redeploys that image without rebuilding.`)) return;
+        showLoading(button);
+        try {
+            await axios.post(`/api/apps/${appName}/rollback`, { commit_sha: commitSha });
+            showToast(`Rolled back <strong>${appName}</strong> to ${commitSha.slice(0, 9)}`, 'success');
+            setTimeout(() => location.reload(), 1200);
+        } catch (error) {
+            showToast(error.response?.data?.error || `Rollback failed`, 'error');
+            hideLoading(button);
+        }
+    }
+</script>
+{% endblock %}

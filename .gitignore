@@ -92,6 +92,13 @@ letsencrypt/
 certs/
 logs/
 
+# Launchbox runtime state
+state/
+
+# Generated Traefik dynamic routes
+traefik/dynamic/*.yml
+!traefik/dynamic/.gitkeep
+
 # Git repositories (exclude contents but keep directory structure)
 repos/*
 !repos/.gitkeep
@@ -101,3 +108,4 @@ repos/*
 
 # PyCharm
 *.iml
+.superpowers/

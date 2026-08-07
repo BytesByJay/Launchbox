@@ -25,9 +25,23 @@ class DatabaseManager:
             logger.error(f"Failed to connect to Docker: {e}")
             raise DatabaseError(f"Docker connection failed: {e}")
     
-    def create_database_for_app(self, app_name: str, app_path: str) -> Optional[Dict[str, str]]:
-        """Create database container for application if needed"""
-        config = LaunchboxConfig(app_path)
+    def create_database_for_app(
+        self,
+        app_name: str,
+        app_path: str,
+        config: Optional[LaunchboxConfig] = None,
+    ) -> Optional[Dict[str, str]]:
+        """Create database container for application if needed.
+
+        ``config`` lets a caller that has already resolved the configuration
+        hand it in rather than have it re-read from ``app_path``. A rollback
+        replays a configuration recorded on the deployment row and has no
+        source directory to read, so without this it would provision against
+        built-in defaults (postgresql/13) regardless of what the deployment
+        being restored actually used.
+        """
+        if config is None:
+            config = LaunchboxConfig(app_path)
         
         if not config.is_database_enabled():
             logger.debug(f"Database not enabled for {app_name}")

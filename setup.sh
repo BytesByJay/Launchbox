@@ -9,12 +9,13 @@ echo "🚀 Setting up Launchbox..."
 
 # Create necessary directories
 echo "📁 Creating directories..."
-mkdir -p apps repos letsencrypt certs traefik logs
+mkdir -p apps repos letsencrypt certs traefik/dynamic logs state
 
 # Set proper permissions
 echo "🔧 Setting permissions..."
-chmod 755 apps repos certs traefik logs
+chmod 755 apps repos certs traefik traefik/dynamic logs
 chmod 700 letsencrypt
+chmod 700 state
 
 # Create acme.json if it doesn't exist
 if [ ! -f letsencrypt/acme.json ]; then

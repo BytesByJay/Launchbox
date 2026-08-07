@@ -1,3 +1,4 @@
+import copy
 import os
 import yaml
 from typing import Dict, Any, Optional, List
@@ -12,10 +13,35 @@ class LaunchboxConfig:
         self.app_path = app_path
         self.config_path = os.path.join(app_path, "launchbox.yaml")
         self.config = self._load_config()
-    
-    def _load_config(self) -> Dict[str, Any]:
-        """Load and parse launchbox.yaml configuration file"""
-        default_config = {
+
+    @classmethod
+    def from_mapping(cls, mapping: Dict[str, Any]) -> "LaunchboxConfig":
+        """Build a config around an already-merged mapping, touching no files.
+
+        This is how a rollback reproduces the configuration a past deployment
+        actually ran with. The mapping comes from the deployment row, not from
+        ``apps/<app>/launchbox.yaml`` -- which for a git-pushed application
+        never exists, so reading it would silently yield built-in defaults
+        (port 3000, no health check, no resource limits, no environment).
+
+        ``app_path`` is deliberately None: nothing here may reach the
+        filesystem, and get_environment_vars must not pick up a stray ``.env``
+        relative to the process's working directory.
+        """
+        instance = cls.__new__(cls)
+        instance.app_path = None
+        instance.config_path = None
+        # Merged under the defaults so a mapping stored by an older version,
+        # missing a key added since, still yields a complete config.
+        instance.config = instance._deep_merge(
+            cls._default_config(), copy.deepcopy(dict(mapping or {}))
+        )
+        return instance
+
+    @staticmethod
+    def _default_config() -> Dict[str, Any]:
+        """The built-in configuration every launchbox.yaml is merged over."""
+        return {
             "app": {
                 "port": 3000,
                 "health_check": None,
@@ -40,6 +66,10 @@ class LaunchboxConfig:
                 "redirect_http": True
             }
         }
+
+    def _load_config(self) -> Dict[str, Any]:
+        """Load and parse launchbox.yaml configuration file"""
+        default_config = self._default_config()
         
         if not os.path.exists(self.config_path):
             logger.info(f"No launchbox.yaml found in {self.app_path}, using defaults")
@@ -84,9 +114,10 @@ class LaunchboxConfig:
         """Get environment variables"""
         env_vars = self.config["environment"].copy()
         
-        # Load .env file if it exists
-        env_file = os.path.join(self.app_path, ".env")
-        if os.path.exists(env_file):
+        # Load .env file if it exists. A config built by from_mapping has no
+        # app_path at all, and must not fall back to a relative ".env".
+        env_file = os.path.join(self.app_path, ".env") if self.app_path else None
+        if env_file and os.path.exists(env_file):
             try:
                 with open(env_file, 'r') as f:
                     for line in f:
