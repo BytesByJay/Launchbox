@@ -7,7 +7,7 @@ from pathlib import Path
 from datetime import datetime
 from launchbox.config import APPS_DIR, REPOS_DIR
 from launchbox.config_parser import LaunchboxConfig
-from launchbox.deploy import deploy, remove_app, rollback
+from launchbox.deploy import deploy, remove_app, rollback, update_env, RESERVED_ENV_KEYS
 from launchbox.init import init as init_app
 from launchbox.ssl_manager import SSLManager
 from launchbox.logger import setup_logger, LaunchboxError
@@ -311,6 +311,36 @@ def api_rollback_app(app_name):
         logger.error(f"Failed to roll back {app_name}: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/apps/<app_name>/env', methods=['POST'])
+def api_update_env(app_name):
+    """Update environment variables on the running container, no rebuild.
+
+    A live patch: redeploys the current image through the same health-gated
+    path as rollback, so a change whose probe fails leaves the running
+    version untouched. Nothing is written back to the application's source --
+    the next real deploy supersedes this.
+    """
+    try:
+        payload = request.get_json(silent=True) or {}
+        set_vars = payload.get('set') or {}
+        unset_vars = payload.get('unset') or []
+
+        container_name = update_env(app_name, set_vars=set_vars,
+                                    unset_vars=unset_vars)
+
+        return jsonify({
+            'message': f'Updated environment for {app_name}',
+            'container': container_name,
+        })
+
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except LaunchboxError as e:
+        return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        logger.error(f"Failed to update environment for {app_name}: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/apps/<app_name>/stop', methods=['POST'])
 def api_stop_app(app_name):
     """Stop an application"""
@@ -438,6 +468,7 @@ def app_detail(app_name):
     history = []
     current_deployment_id = None
     database_info = None
+    editable_env = None
     try:
         with StateStore() as store:
             history = store.list_deployments(app_name, limit=20)
@@ -445,26 +476,50 @@ def app_detail(app_name):
             if state_row:
                 current_deployment_id = state_row.get('current_deployment')
 
-                # Apps deployed purely via git push have no local
-                # launchbox.yaml to read config_info from above -- the
-                # config actually used is on their deployment row instead.
-                if config_info is None and current_deployment_id:
-                    deployment = store.get_deployment(current_deployment_id)
-                    raw_config = (deployment or {}).get('config_json')
-                    if raw_config:
-                        try:
-                            mapping = json.loads(raw_config)
-                            config_info = {
-                                'port': mapping.get('app', {}).get('port', 3000),
-                                'environment': {},
-                                'resources': mapping.get('resources', {}),
-                                'database_enabled': mapping.get('database', {}).get('enabled', False),
-                                'https_enabled': mapping.get('https', {}).get('enabled', False),
-                            }
-                        except Exception as e:
-                            logger.warning(
-                                f"Failed to parse recorded config for {app_name}: {e}"
-                            )
+            current_deployment = None
+            if current_deployment_id:
+                current_deployment = store.get_deployment(current_deployment_id)
+
+            # Apps deployed purely via git push have no local launchbox.yaml
+            # to read config_info from above -- the config actually used is
+            # on their deployment row instead.
+            if config_info is None and current_deployment:
+                raw_config = current_deployment.get('config_json')
+                if raw_config:
+                    try:
+                        mapping = json.loads(raw_config)
+                        config_info = {
+                            'port': mapping.get('app', {}).get('port', 3000),
+                            'environment': {},
+                            'resources': mapping.get('resources', {}),
+                            'database_enabled': mapping.get('database', {}).get('enabled', False),
+                            'https_enabled': mapping.get('https', {}).get('enabled', False),
+                        }
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to parse recorded config for {app_name}: {e}"
+                        )
+
+            # The editor works off what is actually running, not off a fresh
+            # re-read of launchbox.yaml/.env -- those two can differ, and for
+            # a git-push-only app there is no local file to re-read at all.
+            # Database connection variables are excluded: they are shown in
+            # their own panel below and are re-provisioned automatically, so
+            # editing them here would silently desynchronise a container from
+            # the database it is actually pointed at.
+            if current_deployment:
+                raw_env = current_deployment.get('env_json')
+                if raw_env:
+                    try:
+                        resolved = json.loads(raw_env)
+                        editable_env = {
+                            k: v for k, v in resolved.items()
+                            if k not in RESERVED_ENV_KEYS
+                        }
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to parse recorded environment for {app_name}: {e}"
+                        )
 
             db_row = store.get_database(app_name)
             if db_row:
@@ -491,7 +546,8 @@ def app_detail(app_name):
                          history=history,
                          current_deployment_id=current_deployment_id,
                          database=database_info,
-                         repo_path=repo_path)
+                         repo_path=repo_path,
+                         editable_env=editable_env)
 
 def main():
     """Entry point used by ``python3 -m launchbox dashboard``."""

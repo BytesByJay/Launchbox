@@ -532,6 +532,100 @@ def remove_app(
             store.close()
 
 
+RESERVED_ENV_KEYS = frozenset({
+    'DATABASE_URL', 'DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER',
+    'DB_PASSWORD', 'DB_TYPE',
+})
+
+
+def update_env(
+    app_name: str,
+    set_vars: Optional[Dict[str, str]] = None,
+    unset_vars: Optional[List[str]] = None,
+    store: Optional[StateStore] = None,
+) -> str:
+    """Redeploy the running image with updated environment variables.
+
+    No rebuild: the current deployment's own image is reused, so this is a
+    live patch to the running container rather than a change to the
+    application's source. The next real deploy -- a git push, or
+    `launchbox deploy` -- reads launchbox.yaml/.env fresh and supersedes
+    whatever was set here. Nothing is written to disk.
+
+    Goes through the same health-gated promotion path as a forward deploy and
+    as rollback, so an update whose probe fails leaves the current version
+    serving.
+
+    Database connection variables are provisioned automatically and
+    re-resolved live on every call; they cannot be set or unset through this
+    path, so a stray edit here can never desynchronise a container from the
+    database it is actually pointed at.
+    """
+    validate_app_name(app_name)
+
+    requested_keys = set((set_vars or {}).keys()) | set(unset_vars or [])
+    reserved_requested = requested_keys & RESERVED_ENV_KEYS
+    if reserved_requested:
+        raise ValueError(
+            f"{app_name}: {', '.join(sorted(reserved_requested))} "
+            "are database connection variables managed automatically and "
+            "cannot be set or unset here."
+        )
+
+    owns_store = store is None
+    store = store or StateStore()
+
+    try:
+        app_row = store.get_app(app_name)
+        current_id = app_row.get('current_deployment') if app_row else None
+        if not current_id:
+            raise DeploymentError(f"{app_name}: no current deployment to update")
+
+        target = store.get_deployment(current_id)
+        if target is None:
+            raise DeploymentError(f"{app_name}: current deployment record is missing")
+
+        image_ref = _resolve_rollback_image(app_name, target)
+        config = _replayed_config(app_name, target)
+        env_vars = _replayed_environment(app_name, config, target)
+
+        for key in (unset_vars or []):
+            env_vars.pop(key, None)
+        env_vars.update(_stringify_env(set_vars or {}))
+
+        previous = _find_previous_container(app_name, store)
+        commit_sha = target.get('commit_sha')
+        container_name = f"{app_name}-{_short(commit_sha)}"
+        if runner.container_exists(container_name) or container_name == previous:
+            container_name = f"{container_name}-{int(time.time())}"
+
+        deployment_id = store.record_start(
+            app_name,
+            commit_sha,
+            config_json=json.dumps(config.config, default=str, sort_keys=True),
+            env_json=json.dumps(env_vars, sort_keys=True),
+        )
+        logger.info(
+            f"Updating environment for {app_name} (deployment {deployment_id})"
+        )
+
+        return _run_promotion(store, deployment_id, lambda: _promote(
+            app_name=app_name,
+            container_name=container_name,
+            image_ref=image_ref,
+            config=config,
+            env_vars=env_vars,
+            commit_sha=commit_sha,
+            previous_container=previous,
+            store=store,
+            deployment_id=deployment_id,
+            image_id=target.get('image_id'),
+        ))
+    finally:
+        if owns_store:
+            store.close()
+
+
 def rollback(
     app_name: str,
     commit_sha: Optional[str] = None,

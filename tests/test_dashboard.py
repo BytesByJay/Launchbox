@@ -789,3 +789,102 @@ def test_homepage_activity_feed_survives_a_broken_state_store(
     response = client.get('/')
 
     assert response.status_code == 200
+
+
+# ------------------------------------------------------------- env endpoint
+
+
+def test_env_endpoint_delegates_to_update_env(client, mocker):
+    from launchbox import dashboard as dashboard_module
+
+    upd = mocker.patch.object(dashboard_module, "update_env",
+                              return_value="myapp-abc1234")
+
+    response = client.post('/api/apps/myapp/env',
+                           json={"set": {"DEBUG": "true"}, "unset": ["OLD"]})
+
+    assert response.status_code == 200
+    upd.assert_called_once_with("myapp", set_vars={"DEBUG": "true"},
+                                unset_vars=["OLD"])
+    assert response.get_json()["container"] == "myapp-abc1234"
+
+
+def test_env_endpoint_defaults_to_empty_set_and_unset(client, mocker):
+    from launchbox import dashboard as dashboard_module
+
+    upd = mocker.patch.object(dashboard_module, "update_env",
+                              return_value="myapp-abc1234")
+
+    client.post('/api/apps/myapp/env')
+
+    upd.assert_called_once_with("myapp", set_vars={}, unset_vars=[])
+
+
+def test_env_endpoint_rejects_a_reserved_key(client, mocker):
+    from launchbox import dashboard as dashboard_module
+
+    mocker.patch.object(dashboard_module, "update_env",
+                        side_effect=ValueError(
+                            "DB_PASSWORD are database connection variables"
+                        ))
+
+    response = client.post('/api/apps/myapp/env',
+                           json={"set": {"DB_PASSWORD": "hack"}})
+
+    assert response.status_code == 400
+
+
+def test_env_endpoint_reports_a_failed_health_probe(client, mocker):
+    from launchbox import dashboard as dashboard_module
+    from launchbox.logger import DeploymentError
+
+    mocker.patch.object(dashboard_module, "update_env",
+                        side_effect=DeploymentError("health probe failed"))
+
+    response = client.post('/api/apps/myapp/env',
+                           json={"set": {"DEBUG": "true"}})
+
+    assert response.status_code == 500
+    assert 'health probe failed' in response.get_json()['error']
+
+
+# ------------------------------------------------------- editable_env in detail
+
+
+def test_detail_page_exposes_editable_env_excluding_database_keys(
+    client, fake_client, store, mocker
+):
+    dep = store.record_start("myapp", "abc1234", config_json=json.dumps({}))
+    store.record_success(
+        dep, "myapp-abc1234", "launchbox-myapp:abc1234",
+    )
+    # env_json is set separately since record_success doesn't take it.
+    store._conn.execute(
+        "UPDATE deployments SET env_json = ? WHERE id = ?",
+        (json.dumps({"NODE_ENV": "production",
+                    "DATABASE_URL": "postgresql://secret"}), dep),
+    )
+    store._conn.commit()
+
+    from launchbox import dashboard as dashboard_module
+    mocker.patch.object(dashboard_module, "StateStore",
+                        lambda *a, **k: StateStore(store.db_path))
+
+    response = client.get('/app/myapp')
+    body = response.get_data(as_text=True)
+    assert 'NODE_ENV' in body
+    assert 'production' in body
+    assert 'DATABASE_URL' not in body, (
+        "database-managed keys must not appear in the editable list"
+    )
+
+
+def test_detail_page_env_editor_disabled_when_never_deployed(client):
+    # myapp is present via the client fixture's local apps/ dir but has no
+    # deployment row at all in a fresh store, so there is nothing to redeploy
+    # with an env change.
+    response = client.get('/app/myapp')
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert 'at least once' in body

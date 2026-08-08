@@ -13,7 +13,7 @@ from typing import List, Optional
 
 from launchbox import runner
 from launchbox.builder import build
-from launchbox.deploy import deploy, remove_app, rollback
+from launchbox.deploy import deploy, remove_app, rollback, update_env
 from launchbox.init import init
 from launchbox.logger import setup_logger, LaunchboxError
 from launchbox.state import StateStore
@@ -49,6 +49,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_rollback.add_argument("app_name")
     p_rollback.add_argument("--commit", default=None,
                             help="target commit (default: last good version)")
+
+    p_env = sub.add_parser(
+        "env", help="update environment variables without rebuilding")
+    p_env.add_argument("app_name")
+    p_env.add_argument(
+        "--set", action="append", default=[], metavar="KEY=VALUE",
+        help="set (or overwrite) an environment variable; repeatable")
+    p_env.add_argument(
+        "--unset", action="append", default=[], metavar="KEY",
+        help="remove an environment variable; repeatable")
 
     p_remove = sub.add_parser(
         "remove", help="remove an application, its containers and its images")
@@ -140,6 +150,18 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         if args.command == "rollback":
             print(rollback(args.app_name, commit_sha=args.commit))
+            return 0
+
+        if args.command == "env":
+            set_vars = {}
+            for item in args.set:
+                if "=" not in item:
+                    logger.error(f"--set expects KEY=VALUE, got: {item!r}")
+                    return 1
+                key, value = item.split("=", 1)
+                set_vars[key] = value
+            print(update_env(args.app_name, set_vars=set_vars,
+                            unset_vars=args.unset))
             return 0
 
         if args.command == "remove":

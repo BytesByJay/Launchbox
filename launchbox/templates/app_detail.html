@@ -84,16 +84,6 @@
                         <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">{{ key|title }} limit</dt><dd class="font-mono text-gray-900 dark:text-gray-100">{{ value }}</dd></div>
                     {% endfor %}
                 {% endif %}
-                {% if config.environment %}
-                    <div class="pt-2 border-t border-gray-100 dark:border-gray-800">
-                        <dt class="text-gray-500 dark:text-gray-400 mb-1.5">Environment</dt>
-                        <dd class="space-y-1">
-                            {% for key in config.environment.keys() %}
-                                <div class="font-mono text-xs bg-gray-50 dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded px-2 py-1 text-gray-700 dark:text-gray-300">{{ key }}</div>
-                            {% endfor %}
-                        </dd>
-                    </div>
-                {% endif %}
             </dl>
         {% else %}
             <p class="text-sm text-gray-400 dark:text-gray-500">No configuration found for this application.</p>
@@ -147,6 +137,42 @@
             <i class="fas fa-lock text-[10px] mr-1"></i>Credentials are injected into the container as environment variables and are not shown here.
         </p>
     </div>
+    {% endif %}
+</div>
+
+<div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5 mb-6">
+    <div class="flex items-center justify-between mb-1">
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Environment variables</h2>
+        {% if editable_env is not none %}
+        <button onclick="addEnvRow()" class="text-xs font-medium text-accent-700 dark:text-accent-400 hover:text-accent-800 dark:hover:text-accent-300">
+            <i class="fas fa-plus text-[10px] mr-1"></i>Add variable
+        </button>
+        {% endif %}
+    </div>
+
+    {% if editable_env is none %}
+        <p class="text-sm text-gray-400 dark:text-gray-500 mt-3">
+            Deploy this application at least once to manage its environment variables here.
+        </p>
+    {% else %}
+        <p class="text-xs text-gray-400 dark:text-gray-500 mb-4">
+            Changes here redeploy the current image with no rebuild — a live patch, not a change
+            to <code class="font-mono">launchbox.yaml</code>. The next real deploy overwrites them.
+            {% if database %}Database connection variables are managed automatically and are not listed.{% endif %}
+        </p>
+
+        <div id="env-rows" class="space-y-2"></div>
+
+        {% if not editable_env %}
+            <p id="env-empty-hint" class="text-sm text-gray-400 dark:text-gray-500">No custom environment variables set.</p>
+        {% endif %}
+
+        <div class="mt-4 flex items-center gap-2">
+            <button id="env-save-btn" onclick="saveEnv('{{ app.name }}', this)" data-loading-label="Redeploying"
+                class="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-accent-600 hover:bg-accent-700 px-3.5 py-2 rounded-lg transition-colors">
+                <i class="fas fa-floppy-disk text-xs"></i> Save & redeploy
+            </button>
+        </div>
     {% endif %}
 </div>
 
@@ -216,6 +242,95 @@
         const value = el.dataset.relativeTime;
         if (value) el.textContent = relativeTime(value);
     });
+
+    // ---- Environment variable editor -------------------------------------
+    const originalEnv = {{ (editable_env or {})|tojson }};
+    let envRowSeq = 0;
+
+    function envRowTemplate(key, value) {
+        const id = `env-row-${envRowSeq++}`;
+        const row = document.createElement('div');
+        row.className = 'env-row flex items-center gap-2';
+        row.id = id;
+        row.innerHTML = `
+            <input type="text" class="env-key w-1/3 px-2.5 py-1.5 text-xs font-mono bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 text-gray-900 dark:text-gray-100"
+                placeholder="KEY" value="${key.replace(/"/g, '&quot;')}">
+            <div class="relative flex-1">
+                <input type="password" class="env-value w-full px-2.5 py-1.5 pr-8 text-xs font-mono bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 text-gray-900 dark:text-gray-100"
+                    placeholder="value" value="${value.replace(/"/g, '&quot;')}">
+                <button type="button" class="toggle-visibility absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" title="Show/hide">
+                    <i class="fas fa-eye text-[11px]"></i>
+                </button>
+            </div>
+            <button type="button" class="remove-row w-7 h-7 flex items-center justify-center text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded-md hover:bg-red-50 dark:hover:bg-red-950/40" title="Remove">
+                <i class="fas fa-trash text-[11px]"></i>
+            </button>
+        `;
+        row.querySelector('.toggle-visibility').addEventListener('click', (e) => {
+            const input = row.querySelector('.env-value');
+            const icon = e.currentTarget.querySelector('i');
+            const isHidden = input.type === 'password';
+            input.type = isHidden ? 'text' : 'password';
+            icon.className = isHidden ? 'fas fa-eye-slash text-[11px]' : 'fas fa-eye text-[11px]';
+        });
+        row.querySelector('.remove-row').addEventListener('click', () => {
+            row.remove();
+            updateEnvEmptyHint();
+        });
+        return row;
+    }
+
+    function updateEnvEmptyHint() {
+        const hint = document.getElementById('env-empty-hint');
+        if (hint) hint.classList.toggle('hidden', document.querySelectorAll('.env-row').length > 0);
+    }
+
+    function addEnvRow(key = '', value = '') {
+        const container = document.getElementById('env-rows');
+        if (!container) return;
+        const row = envRowTemplate(key, value);
+        container.appendChild(row);
+        updateEnvEmptyHint();
+        if (!key) row.querySelector('.env-key').focus();
+        return row;
+    }
+
+    Object.entries(originalEnv).forEach(([key, value]) => addEnvRow(key, value));
+
+    async function saveEnv(appName, button) {
+        const rows = document.querySelectorAll('.env-row');
+        const setVars = {};
+        const seenKeys = new Set();
+
+        for (const row of rows) {
+            const key = row.querySelector('.env-key').value.trim();
+            const value = row.querySelector('.env-value').value;
+            if (!key) continue;
+            if (seenKeys.has(key)) {
+                showToast(`Duplicate variable name: <strong>${key}</strong>`, 'error');
+                return;
+            }
+            seenKeys.add(key);
+            setVars[key] = value;
+        }
+
+        const unsetVars = Object.keys(originalEnv).filter(k => !seenKeys.has(k));
+
+        if (Object.keys(setVars).length === 0 && unsetVars.length === 0) {
+            showToast('No changes to save', 'info');
+            return;
+        }
+
+        showLoading(button);
+        try {
+            await axios.post(`/api/apps/${appName}/env`, { set: setVars, unset: unsetVars });
+            showToast(`Environment updated — redeploying <strong>${appName}</strong>`, 'success');
+            setTimeout(() => location.reload(), 1200);
+        } catch (error) {
+            showToast(error.response?.data?.error || 'Failed to update environment', 'error');
+            hideLoading(button);
+        }
+    }
 
     async function deployApp(appName, button) {
         showLoading(button);
