@@ -104,6 +104,7 @@ def _base_app_info(name, path=None):
         'has_repo': os.path.isdir(os.path.join(REPOS_DIR, f"{name}.git")),
         'last_deployed_at': None,
         'last_commit': None,
+        'has_database': False,
     }
 
 
@@ -224,6 +225,11 @@ def get_app_list():
 
         for info in by_name.values():
             _apply_container_info(info, store)
+            if store is not None:
+                try:
+                    info['has_database'] = store.get_database(info['name']) is not None
+                except Exception as e:
+                    logger.warning(f"Failed to check database for {info['name']}: {e}")
     finally:
         if store is not None:
             store.close()

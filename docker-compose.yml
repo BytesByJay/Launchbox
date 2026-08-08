@@ -2,8 +2,12 @@ version: '3.8'
 
 services:
   traefik:
-    image: traefik:v2.10
+    image: traefik:v2.11
     container_name: traefik
+    # Traefik through v2.10 vendors a Docker SDK hardcoded to API 1.24 and
+    # ignores DOCKER_API_VERSION entirely -- Docker Engine 29+ (minimum 1.40)
+    # rejects that outright. v2.11 is the first release with a compatible
+    # SDK; there is no working env-var workaround on v2.10.
     command:
       - "--api.dashboard=true"
       - "--api.insecure=true"              # ✅ expose dashboard without auth

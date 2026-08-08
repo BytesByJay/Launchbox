@@ -9,10 +9,10 @@
     <span class="text-gray-900 dark:text-gray-100 font-medium">{{ app.name }}</span>
 </nav>
 
-<div class="flex items-start justify-between mb-6 flex-wrap gap-4">
+<div class="flex items-start justify-between mb-4 flex-wrap gap-4">
     <div>
-        <div class="flex items-center gap-3 flex-wrap">
-            <h1 class="text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">{{ app.name }}</h1>
+        <div class="flex items-center gap-2.5 flex-wrap">
+            <h1 class="text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">{{ app.name }}</h1>
             {% if app.marked_failed %}
                 <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900">
                     <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Failed
@@ -60,49 +60,47 @@
             {% endif %}
         </div>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-1.5">
         {% if app.status == 'running' %}
             <a href="{{ app.url }}" target="_blank"
-                class="inline-flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 px-3.5 py-2 rounded-lg transition-colors">
-                <i class="fas fa-arrow-up-right-from-square text-xs"></i> Open
+                class="inline-flex items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 px-3 py-1.5 rounded transition-colors active:scale-[0.98]">
+                <i class="fas fa-arrow-up-right-from-square text-[11px]"></i> Open
             </a>
         {% endif %}
         {% if app.has_dockerfile %}
             <button onclick="deployApp('{{ app.name }}', this)" data-loading-label="Deploying"
-                class="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-accent-600 hover:bg-accent-700 px-3.5 py-2 rounded-lg transition-colors">
-                <i class="fas fa-rocket text-xs"></i> Deploy
+                class="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-accent-600 hover:bg-accent-700 px-3 py-1.5 rounded transition-colors active:scale-[0.98]">
+                <i class="fas fa-rocket text-[11px]"></i> Deploy
             </button>
         {% endif %}
         <button onclick="removeApp('{{ app.name }}', this)" data-loading-label="Removing"
-            class="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 dark:text-red-400 bg-white dark:bg-gray-900 border border-red-200 dark:border-red-900 hover:bg-red-50 dark:hover:bg-red-950/40 px-3.5 py-2 rounded-lg transition-colors">
-            <i class="fas fa-trash text-xs"></i> Remove
+            class="inline-flex items-center gap-1.5 text-xs font-medium text-red-600 dark:text-red-400 bg-white dark:bg-gray-900 border border-red-200 dark:border-red-900 hover:bg-red-50 dark:hover:bg-red-950/40 px-3 py-1.5 rounded transition-colors active:scale-[0.98]">
+            <i class="fas fa-trash text-[11px]"></i> Remove
         </button>
     </div>
 </div>
 
-<!-- Tabs: the detail page was one long scroll of six stacked cards, which is
-     how every comparable tool (Render, Heroku, Vercel, Fly) avoids laying
-     out a service page. -->
-<div class="border-b border-gray-200 dark:border-gray-800 mb-6">
+<!-- Tabs -->
+<div class="border-b border-gray-200 dark:border-gray-800 mb-4">
     <nav class="flex gap-1 -mb-px overflow-x-auto" id="detail-tabs">
-        <button data-tab="overview" class="tab-btn whitespace-nowrap px-3.5 py-2.5 text-sm font-medium border-b-2 transition-colors">Overview</button>
-        <button data-tab="environment" class="tab-btn whitespace-nowrap px-3.5 py-2.5 text-sm font-medium border-b-2 transition-colors">
-            Environment{% if editable_env %} <span class="ml-1 text-xs text-gray-400 dark:text-gray-500">{{ editable_env|length }}</span>{% endif %}
+        <button data-tab="overview" class="tab-btn whitespace-nowrap px-3 py-2 text-xs font-medium border-b-2 transition-colors">Overview</button>
+        <button data-tab="environment" class="tab-btn whitespace-nowrap px-3 py-2 text-xs font-medium border-b-2 transition-colors">
+            Environment{% if editable_env %} <span class="ml-1 text-[11px] text-gray-400 dark:text-gray-500">{{ editable_env|length }}</span>{% endif %}
         </button>
-        <button data-tab="database" class="tab-btn whitespace-nowrap px-3.5 py-2.5 text-sm font-medium border-b-2 transition-colors">
+        <button data-tab="database" class="tab-btn whitespace-nowrap px-3 py-2 text-xs font-medium border-b-2 transition-colors">
             Database{% if database %} <span class="ml-1 w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block align-middle"></span>{% endif %}
         </button>
-        <button data-tab="deployments" class="tab-btn whitespace-nowrap px-3.5 py-2.5 text-sm font-medium border-b-2 transition-colors">
-            Deployments{% if history %} <span class="ml-1 text-xs text-gray-400 dark:text-gray-500">{{ history|length }}</span>{% endif %}
+        <button data-tab="deployments" class="tab-btn whitespace-nowrap px-3 py-2 text-xs font-medium border-b-2 transition-colors">
+            Deployments{% if history %} <span class="ml-1 text-[11px] text-gray-400 dark:text-gray-500">{{ history|length }}</span>{% endif %}
         </button>
     </nav>
 </div>
 
 <!-- ============================ OVERVIEW ============================ -->
 <section data-panel="overview" class="tab-panel">
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">Configuration</h2>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-card p-4">
+            <h2 class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">Configuration</h2>
             {% if config %}
                 <dl class="space-y-3 text-sm">
                     <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Port</dt><dd class="font-mono text-gray-900 dark:text-gray-100">{{ config.port }}</dd></div>
@@ -119,8 +117,8 @@
             {% endif %}
         </div>
 
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">Container</h2>
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-card p-4">
+            <h2 class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">Container</h2>
             {% if container %}
                 <dl class="space-y-3 text-sm">
                     <div class="flex justify-between gap-4 items-center">
@@ -156,8 +154,8 @@
     </div>
 
     {% if repo_path %}
-    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5 mt-5">
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">Deploy source</h2>
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-card p-4 mt-5">
+        <h2 class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Deploy source</h2>
         <p class="text-xs text-gray-400 dark:text-gray-500 mb-3">Push to this remote to trigger a deployment.</p>
         <div class="space-y-1.5">
             <div class="flex items-center justify-between gap-2 bg-gray-50 dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-lg px-3 py-2">
@@ -179,7 +177,7 @@
 
 <!-- ========================== ENVIRONMENT ========================== -->
 <section data-panel="environment" class="tab-panel hidden">
-    <div id="env-section" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5">
+    <div id="env-section" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-card p-4">
         {% if editable_env is none %}
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Environment variables</h2>
             <p class="text-sm text-gray-400 dark:text-gray-500 mt-3">
@@ -218,28 +216,28 @@
             {% endif %}
 
             <div class="flex items-center justify-between mb-1">
-                <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                <h2 class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                     {% if database and database.injected_env %}Custom variables{% else %}Environment variables{% endif %}
                 </h2>
                 <button onclick="addEnvRow()" class="text-xs font-medium text-accent-700 dark:text-accent-400 hover:text-accent-800 dark:hover:text-accent-300">
                     <i class="fas fa-plus text-[10px] mr-1"></i>Add variable
                 </button>
             </div>
-            <p class="text-xs text-gray-400 dark:text-gray-500 mb-4">
+            <p class="text-xs text-gray-400 dark:text-gray-500 mb-3">
                 Changes here redeploy the current image with no rebuild — a live patch, not a change
                 to <code class="font-mono">launchbox.yaml</code>. The next real deploy overwrites them.
             </p>
 
-            <div id="env-rows" class="space-y-2"></div>
+            <div id="env-rows" class="space-y-1.5"></div>
 
             {% if not editable_env %}
                 <p id="env-empty-hint" class="text-sm text-gray-400 dark:text-gray-500">No custom environment variables set.</p>
             {% endif %}
 
-            <div class="mt-4">
+            <div class="mt-3">
                 <button id="env-save-btn" onclick="saveEnv('{{ app.name }}', this)" data-loading-label="Redeploying"
-                    class="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-accent-600 hover:bg-accent-700 px-3.5 py-2 rounded-lg transition-colors">
-                    <i class="fas fa-floppy-disk text-xs"></i> Save & redeploy
+                    class="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-accent-600 hover:bg-accent-700 px-3 py-1.5 rounded transition-colors active:scale-[0.98]">
+                    <i class="fas fa-floppy-disk text-[11px]"></i> Save & redeploy
                 </button>
             </div>
         {% endif %}
@@ -249,9 +247,9 @@
 <!-- =========================== DATABASE =========================== -->
 <section data-panel="database" class="tab-panel hidden">
     {% if database %}
-    <div id="database-panel" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5">
-        <div class="flex items-start justify-between mb-4">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+    <div id="database-panel" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-card p-4">
+        <div class="flex items-start justify-between mb-3">
+            <h2 class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 <i class="fas fa-database text-gray-400 dark:text-gray-500 mr-1.5"></i>{{ database.engine|title }}
             </h2>
             <button onclick="detachDatabase('{{ app.name }}', this)" data-loading-label="Detaching"
@@ -312,8 +310,8 @@
         </p>
     </div>
     {% elif editable_env is not none %}
-    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5">
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-card p-4">
+        <h2 class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
             <i class="fas fa-database text-gray-400 dark:text-gray-500 mr-1.5"></i>Database
         </h2>
         <p class="text-xs text-gray-400 dark:text-gray-500 mb-4">
@@ -341,13 +339,13 @@
                     class="w-32 px-2.5 py-1.5 text-xs font-mono bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 text-gray-900 dark:text-gray-100">
             </div>
             <button id="db-provision-btn" onclick="provisionDatabase('{{ app.name }}', this)" data-loading-label="Provisioning"
-                class="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-accent-600 hover:bg-accent-700 px-3.5 py-1.5 rounded-lg transition-colors">
+                class="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-accent-600 hover:bg-accent-700 px-3.5 py-1.5 rounded-lg transition-colors active:scale-[0.98]">
                 <i class="fas fa-plus text-xs"></i> Add database
             </button>
         </div>
     </div>
     {% else %}
-    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5">
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-card p-4">
         <p class="text-sm text-gray-400 dark:text-gray-500">Deploy this application at least once before adding a database.</p>
     </div>
     {% endif %}
@@ -355,62 +353,62 @@
 
 <!-- ========================= DEPLOYMENTS ========================= -->
 <section data-panel="deployments" class="tab-panel hidden">
-    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card overflow-hidden">
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-card overflow-hidden">
         {% if history %}
             <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table class="w-full text-[13px] border-collapse">
                 <thead>
-                    <tr class="text-left text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
-                        <th class="px-5 py-2.5 font-medium">Kind</th>
-                        <th class="px-5 py-2.5 font-medium">Commit</th>
-                        <th class="px-5 py-2.5 font-medium">Status</th>
-                        <th class="px-5 py-2.5 font-medium">Started</th>
-                        <th class="px-5 py-2.5 font-medium">Detail</th>
-                        <th class="px-5 py-2.5 font-medium text-right">Action</th>
+                    <tr class="text-left text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500 bg-gray-50/80 dark:bg-gray-900/60 border-b border-gray-200 dark:border-gray-800">
+                        <th class="pl-4 pr-2 py-2">Kind</th>
+                        <th class="px-2 py-2">Commit</th>
+                        <th class="px-2 py-2">Status</th>
+                        <th class="px-2 py-2">Started</th>
+                        <th class="px-2 py-2">Detail</th>
+                        <th class="pl-2 pr-4 py-2 text-right">Action</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-50 dark:divide-gray-800/60">
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-800/60">
                     {% for dep in history %}
-                    <tr class="hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
-                        <td class="px-5 py-3">
+                    <tr class="border-l-2 border-l-transparent hover:border-l-accent-400 dark:hover:border-l-accent-500 hover:bg-gray-50/70 dark:hover:bg-gray-800/40 transition-colors">
+                        <td class="pl-4 pr-2 py-1.5">
                             {% if dep.kind == 'rollback' %}
-                                <span class="inline-flex items-center gap-1 text-xs text-accent-700 dark:text-accent-400"><i class="fas fa-clock-rotate-left text-[10px]"></i>Rollback</span>
+                                <span class="inline-flex items-center gap-1 text-[12px] text-accent-700 dark:text-accent-400"><i class="fas fa-clock-rotate-left text-[10px]"></i>Rollback</span>
                             {% elif dep.kind == 'env' %}
-                                <span class="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"><i class="fas fa-sliders text-[10px]"></i>Env update</span>
+                                <span class="inline-flex items-center gap-1 text-[12px] text-gray-500 dark:text-gray-400"><i class="fas fa-sliders text-[10px]"></i>Env update</span>
                             {% elif dep.kind == 'database' %}
-                                <span class="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"><i class="fas fa-database text-[10px]"></i>Database</span>
+                                <span class="inline-flex items-center gap-1 text-[12px] text-gray-500 dark:text-gray-400"><i class="fas fa-database text-[10px]"></i>Database</span>
                             {% else %}
-                                <span class="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"><i class="fas fa-rocket text-[10px]"></i>Deploy</span>
+                                <span class="inline-flex items-center gap-1 text-[12px] text-gray-500 dark:text-gray-400"><i class="fas fa-rocket text-[10px]"></i>Deploy</span>
                             {% endif %}
                         </td>
-                        <td class="px-5 py-3 font-mono text-gray-900 dark:text-gray-100">{{ (dep.commit_sha or 'latest')[:9] }}</td>
-                        <td class="px-5 py-3">
+                        <td class="px-2 py-1.5 font-mono text-gray-900 dark:text-gray-100">{{ (dep.commit_sha or 'latest')[:9] }}</td>
+                        <td class="px-2 py-1.5">
                             {% if dep.status == 'success' %}
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900">
+                                <span class="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
                                     <i class="fas fa-check text-[10px]"></i> Success
                                 </span>
                             {% elif dep.status == 'failed' %}
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900">
+                                <span class="inline-flex items-center gap-1 text-[11px] font-medium text-red-600 dark:text-red-400">
                                     <i class="fas fa-xmark text-[10px]"></i> Failed
                                 </span>
                             {% else %}
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900">
+                                <span class="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
                                     <i class="fas fa-spinner text-[10px]"></i> In progress
                                 </span>
                             {% endif %}
                         </td>
-                        <td class="px-5 py-3 text-gray-500 dark:text-gray-400" data-relative-time="{{ dep.started_at }}">{{ dep.started_at }}</td>
-                        <td class="px-5 py-3 text-gray-500 dark:text-gray-400 max-w-xs truncate" title="{{ dep.error or '' }}">
+                        <td class="px-2 py-1.5 text-gray-500 dark:text-gray-400 whitespace-nowrap" data-relative-time="{{ dep.started_at }}">{{ dep.started_at }}</td>
+                        <td class="px-2 py-1.5 text-gray-500 dark:text-gray-400 max-w-xs truncate" title="{{ dep.error or '' }}">
                             {{ dep.error or '—' }}
                         </td>
-                        <td class="px-5 py-3 text-right">
+                        <td class="pl-2 pr-4 py-1.5 text-right">
                             {% if dep.status == 'success' and dep.id != current_deployment_id %}
                                 <button onclick="rollbackTo('{{ app.name }}', '{{ dep.commit_sha }}', this)" data-loading-label="Rolling back"
-                                    class="inline-flex items-center gap-1.5 text-xs font-medium text-accent-700 dark:text-accent-400 bg-accent-50 dark:bg-accent-950/40 hover:bg-accent-100 dark:hover:bg-accent-900/40 px-2.5 py-1 rounded-md transition-colors">
+                                    class="inline-flex items-center gap-1.5 text-[11px] font-medium text-accent-700 dark:text-accent-400 bg-accent-50 dark:bg-accent-950/40 hover:bg-accent-100 dark:hover:bg-accent-900/40 px-2 py-1 rounded transition-colors active:scale-95">
                                     <i class="fas fa-clock-rotate-left text-[10px]"></i> Roll back
                                 </button>
                             {% elif dep.id == current_deployment_id %}
-                                <span class="text-xs text-gray-400 dark:text-gray-500 font-medium">Current</span>
+                                <span class="text-[11px] text-gray-400 dark:text-gray-500 font-medium">Current</span>
                             {% endif %}
                         </td>
                     </tr>
@@ -419,7 +417,7 @@
             </table>
             </div>
         {% else %}
-            <p class="px-5 py-8 text-center text-sm text-gray-400 dark:text-gray-500">No deployments recorded yet.</p>
+            <p class="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">No deployments recorded yet.</p>
         {% endif %}
     </div>
 </section>
@@ -438,7 +436,7 @@
 
         document.querySelectorAll('.tab-btn').forEach(btn => {
             const active = btn.dataset.tab === name;
-            btn.className = 'tab-btn whitespace-nowrap px-3.5 py-2.5 text-sm font-medium border-b-2 transition-colors ' + (
+            btn.className = 'tab-btn whitespace-nowrap px-3 py-2 text-xs font-medium border-b-2 transition-colors ' + (
                 active
                     ? 'border-accent-600 text-accent-700 dark:text-accent-400 dark:border-accent-400'
                     : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'

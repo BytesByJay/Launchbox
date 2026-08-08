@@ -34,7 +34,7 @@
                         },
                     },
                     boxShadow: {
-                        card: '0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06)',
+                        card: '0 1px 1px 0 rgb(0 0 0 / 0.03)',
                     },
                 },
             },
@@ -47,38 +47,49 @@
         .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
         ::selection { background-color: #c7d2fe; }
         .dark ::selection { background-color: #3730a3; }
+        /* Buttons and links have no focus style of their own (inputs get one
+           from Tailwind's focus:ring utility) -- without this, tabbing
+           through icon-only buttons is invisible. */
+        button:focus-visible, a:focus-visible {
+            outline: 2px solid #6366f1;
+            outline-offset: 2px;
+            border-radius: 4px;
+        }
+        .dark button:focus-visible, .dark a:focus-visible {
+            outline-color: #818cf8;
+        }
     </style>
     {% block head %}{% endblock %}
 </head>
 <body class="bg-gray-50 dark:bg-gray-950 min-h-screen text-gray-900 dark:text-gray-100 antialiased transition-colors">
     <nav class="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-40">
-        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-16">
-                <a href="/" class="flex items-center gap-2.5 group">
-                    <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-accent-600 text-white shadow-sm group-hover:bg-accent-700 transition-colors">
-                        <i class="fas fa-rocket text-sm"></i>
+        <div class="max-w-screen-2xl mx-auto px-4 sm:px-6">
+            <div class="flex items-center justify-between h-11">
+                <a href="/" class="flex items-center gap-2 group">
+                    <span class="flex items-center justify-center w-6 h-6 rounded bg-accent-600 text-white group-hover:bg-accent-700 transition-colors">
+                        <i class="fas fa-rocket text-[11px]"></i>
                     </span>
-                    <span class="font-semibold text-[15px] tracking-tight text-gray-900 dark:text-gray-100">Launchbox</span>
+                    <span class="font-semibold text-[13px] tracking-tight text-gray-900 dark:text-gray-100">Launchbox</span>
                 </a>
                 <div class="flex items-center gap-1">
-                    <a href="/" class="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 px-3 py-1.5 rounded-md transition-colors">
+                    <a href="/" class="text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 px-2.5 py-1 rounded transition-colors">
                         Applications
                     </a>
-                    <span id="docker-status-pill" class="ml-2 hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-full px-2.5 py-1">
+                    <span id="docker-status-pill" class="ml-2 hidden sm:inline-flex items-center gap-1.5 text-[11px] font-medium text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded px-2 py-0.5">
                         <span class="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600"></span>
                         <span>Docker</span>
                     </span>
                     <button id="theme-toggle" onclick="toggleTheme()" title="Toggle theme"
-                        class="ml-1 w-9 h-9 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
-                        <i class="fas fa-moon text-sm dark:hidden"></i>
-                        <i class="fas fa-sun text-sm hidden dark:inline"></i>
+                        class="ml-1 w-7 h-7 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors">
+                        <i class="fas fa-moon text-xs dark:hidden"></i>
+                        <i class="fas fa-sun text-xs hidden dark:inline"></i>
                     </button>
                 </div>
             </div>
         </div>
     </nav>
 
-    <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main class="max-w-screen-2xl mx-auto px-4 sm:px-6 py-5">
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 <div class="mb-6 space-y-2">
@@ -99,6 +110,33 @@
     <div id="toast-stack" class="fixed top-4 right-4 z-50 flex flex-col gap-2 items-end"></div>
 
     <script>
+        // Shared modal open/close: toggles hidden/flex plus a scale+fade
+        // transition, so every modal in the app enters and exits the same way
+        // instead of the previous hard cut.
+        function openModal(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.remove('hidden');
+            el.classList.add('flex');
+            requestAnimationFrame(() => {
+                el.classList.remove('opacity-0');
+                const panel = el.querySelector('.modal-panel');
+                if (panel) panel.classList.remove('scale-95');
+            });
+        }
+
+        function closeModal(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.add('opacity-0');
+            const panel = el.querySelector('.modal-panel');
+            if (panel) panel.classList.add('scale-95');
+            setTimeout(() => {
+                el.classList.add('hidden');
+                el.classList.remove('flex');
+            }, 150);
+        }
+
         function toggleTheme() {
             const isDark = document.documentElement.classList.toggle('dark');
             localStorage.setItem('lb-theme', isDark ? 'dark' : 'light');
