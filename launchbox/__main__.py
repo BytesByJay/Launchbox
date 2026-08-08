@@ -13,7 +13,10 @@ from typing import List, Optional
 
 from launchbox import runner
 from launchbox.builder import build
-from launchbox.deploy import deploy, remove_app, rollback, update_env
+from launchbox.deploy import (
+    deploy, remove_app, rollback, update_env, configure_database,
+    detach_database, DATABASE_ENGINES,
+)
 from launchbox.init import init
 from launchbox.logger import setup_logger, LaunchboxError
 from launchbox.state import StateStore
@@ -59,6 +62,25 @@ def build_parser() -> argparse.ArgumentParser:
     p_env.add_argument(
         "--unset", action="append", default=[], metavar="KEY",
         help="remove an environment variable; repeatable")
+
+    p_db = sub.add_parser(
+        "db", help="provision or detach an application's database")
+    p_db.add_argument("app_name")
+    db_action = p_db.add_mutually_exclusive_group(required=True)
+    db_action.add_argument(
+        "--engine", choices=sorted(DATABASE_ENGINES),
+        help="provision a database of this engine (or reconfigure the "
+             "existing one)")
+    db_action.add_argument(
+        "--detach", action="store_true",
+        help="stop injecting database credentials; the database and its "
+             "data are kept")
+    p_db.add_argument(
+        "--version", default=None,
+        help="engine version (default: a sensible per-engine version)")
+    p_db.add_argument(
+        "--name", default=None, dest="db_name",
+        help="database name (default: <app_name>_db)")
 
     p_remove = sub.add_parser(
         "remove", help="remove an application, its containers and its images")
@@ -162,6 +184,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                 set_vars[key] = value
             print(update_env(args.app_name, set_vars=set_vars,
                             unset_vars=args.unset))
+            return 0
+
+        if args.command == "db":
+            if args.detach:
+                print(detach_database(args.app_name))
+            else:
+                print(configure_database(
+                    args.app_name, args.engine,
+                    version=args.version, db_name=args.db_name,
+                ))
             return 0
 
         if args.command == "remove":

@@ -37,54 +37,69 @@
         {% for app in apps %}
         <div class="app-row px-5 py-4 hover:bg-gray-50/60 dark:hover:bg-gray-800/40 transition-colors" data-app-name="{{ app.name|lower }}">
             <div class="flex items-center justify-between gap-4 flex-wrap">
-                <div class="flex items-center gap-3.5 min-w-0">
-                    {% if app.marked_failed %}
-                        <span class="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" title="Failed"></span>
-                    {% elif app.health_status == 'healthy' or app.health_status == 'running' %}
-                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" title="{{ app.health_status|title }}"></span>
-                    {% elif app.health_status == 'unhealthy' %}
-                        <span class="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" title="Unhealthy"></span>
-                    {% elif app.health_status == 'starting' %}
-                        <span class="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0 animate-pulse" title="Starting"></span>
-                    {% elif app.status == 'exited' %}
-                        <span class="w-2.5 h-2.5 rounded-full bg-gray-400 shrink-0" title="Exited"></span>
-                    {% elif app.status == 'not deployed' %}
-                        <span class="w-2.5 h-2.5 rounded-full bg-gray-300 dark:bg-gray-600 shrink-0" title="Not deployed"></span>
-                    {% else %}
-                        <span class="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" title="{{ app.status|title }}"></span>
-                    {% endif %}
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <a href="/app/{{ app.name }}" class="font-medium text-gray-900 dark:text-gray-100 hover:text-accent-600 dark:hover:text-accent-400 truncate">{{ app.name }}</a>
 
-                    <div class="min-w-0">
-                        <div class="flex items-center gap-2 flex-wrap">
-                            <a href="/app/{{ app.name }}" class="font-medium text-gray-900 dark:text-gray-100 hover:text-accent-600 dark:hover:text-accent-400 truncate">{{ app.name }}</a>
-                            {% if app.marked_failed %}
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900">Failed</span>
-                            {% elif app.health_status == 'unhealthy' %}
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900">Unhealthy</span>
-                            {% endif %}
-                            {% if not app.has_local_dir %}
-                                <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-400 border border-accent-200 dark:border-accent-800">
-                                    <i class="fas fa-code-branch text-[10px]"></i> git push
-                                </span>
-                            {% elif not app.has_dockerfile %}
-                                <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-                                    <i class="fas fa-triangle-exclamation text-[10px]"></i> No Dockerfile
-                                </span>
-                            {% endif %}
-                        </div>
-                        <div class="mt-0.5 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 font-mono">
-                            <span>{{ app.health_status|title if app.health_status not in ('unknown', None) else app.status|title }}</span>
+                        {% if app.marked_failed %}
+                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900">
+                                <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Failed
+                            </span>
+                        {% elif app.health_status == 'healthy' %}
+                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Healthy
+                            </span>
+                        {% elif app.health_status == 'unhealthy' %}
+                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900">
+                                <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Unhealthy
+                            </span>
+                        {% elif app.health_status == 'starting' %}
+                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900">
+                                <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>Starting
+                            </span>
+                        {% elif app.status == 'running' %}
+                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Running
+                            </span>
+                        {% elif app.status == 'exited' %}
+                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+                                <span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span>Stopped
+                            </span>
+                        {% else %}
+                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+                                <span class="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600"></span>Not deployed
+                            </span>
+                        {% endif %}
+
+                        {% if not app.has_local_dir %}
+                            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-400 border border-accent-200 dark:border-accent-800">
+                                <i class="fas fa-code-branch text-[10px]"></i>git push
+                            </span>
+                        {% elif not app.has_dockerfile %}
+                            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                                <i class="fas fa-triangle-exclamation text-[10px]"></i>No Dockerfile
+                            </span>
+                        {% endif %}
+                    </div>
+
+                    <div class="mt-1 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
+                        {% if app.status == 'running' %}
+                            <a href="{{ app.url }}" target="_blank" class="font-mono hover:text-accent-600 dark:hover:text-accent-400 truncate">{{ app.url }}</a>
+                        {% else %}
+                            <span class="font-mono truncate">{{ app.url }}</span>
+                        {% endif %}
+                        {% if app.last_deployed_at %}
                             <span class="text-gray-300 dark:text-gray-600">·</span>
-                            <span>:{{ app.port }}</span>
-                            {% if app.container_id %}
-                                <span class="text-gray-300 dark:text-gray-600">·</span>
-                                <span>{{ app.container_id[:12] }}</span>
-                            {% endif %}
-                            {% if app.restart_attempts %}
-                                <span class="text-gray-300 dark:text-gray-600">·</span>
-                                <span class="text-amber-600 dark:text-amber-400">{{ app.restart_attempts }} restart{{ 's' if app.restart_attempts != 1 else '' }}</span>
-                            {% endif %}
-                        </div>
+                            <span data-relative-time="{{ app.last_deployed_at }}">{{ app.last_deployed_at }}</span>
+                        {% endif %}
+                        {% if app.last_commit %}
+                            <span class="text-gray-300 dark:text-gray-600">·</span>
+                            <span class="font-mono">{{ app.last_commit[:7] }}</span>
+                        {% endif %}
+                        {% if app.restart_attempts %}
+                            <span class="text-gray-300 dark:text-gray-600">·</span>
+                            <span class="text-amber-600 dark:text-amber-400">{{ app.restart_attempts }} restart{{ 's' if app.restart_attempts != 1 else '' }}</span>
+                        {% endif %}
                     </div>
                 </div>
 
@@ -126,7 +141,8 @@
                 </div>
             </div>
         </div>
-        {% else %}
+        {% endfor %}
+        {% if not apps %}
         <div class="px-5 py-16 text-center">
             <div class="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mx-auto mb-4">
                 <i class="fas fa-box-open text-gray-400 dark:text-gray-500"></i>
@@ -137,7 +153,7 @@
                 <i class="fas fa-plus text-xs"></i> New application
             </button>
         </div>
-        {% endfor %}
+        {% endif %}
     </div>
 </div>
 
@@ -151,14 +167,33 @@
             {% for dep in recent_activity %}
             <li class="px-5 py-3 flex items-center gap-3 text-sm">
                 {% if dep.status == 'success' %}
-                    <i class="fas fa-circle-check text-emerald-500 text-xs"></i>
+                    <i class="fas fa-circle-check text-emerald-500 text-xs shrink-0"></i>
                 {% elif dep.status == 'failed' %}
-                    <i class="fas fa-circle-xmark text-red-500 text-xs"></i>
+                    <i class="fas fa-circle-xmark text-red-500 text-xs shrink-0"></i>
                 {% else %}
-                    <i class="fas fa-spinner text-amber-500 text-xs"></i>
+                    <i class="fas fa-spinner text-amber-500 text-xs shrink-0"></i>
                 {% endif %}
-                <a href="/app/{{ dep.app_name }}" class="font-medium text-gray-900 dark:text-gray-100 hover:text-accent-600 dark:hover:text-accent-400">{{ dep.app_name }}</a>
-                <span class="text-gray-400 dark:text-gray-500 font-mono text-xs">{{ (dep.commit_sha or 'latest')[:9] }}</span>
+                <a href="/app/{{ dep.app_name }}" class="font-medium text-gray-900 dark:text-gray-100 hover:text-accent-600 dark:hover:text-accent-400 shrink-0">{{ dep.app_name }}</a>
+
+                {% if dep.kind == 'rollback' %}
+                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-400 shrink-0">
+                        <i class="fas fa-clock-rotate-left text-[9px]"></i>rolled back
+                    </span>
+                {% elif dep.kind == 'env' %}
+                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 shrink-0">
+                        <i class="fas fa-sliders text-[9px]"></i>env updated
+                    </span>
+                {% elif dep.kind == 'database' %}
+                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 shrink-0">
+                        <i class="fas fa-database text-[9px]"></i>database
+                    </span>
+                {% else %}
+                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 shrink-0">
+                        <i class="fas fa-rocket text-[9px]"></i>deployed
+                    </span>
+                {% endif %}
+
+                <span class="text-gray-400 dark:text-gray-500 font-mono text-xs shrink-0">{{ (dep.commit_sha or 'latest')[:9] }}</span>
                 {% if dep.status == 'failed' and dep.error %}
                     <span class="text-red-500 dark:text-red-400 text-xs truncate flex-1" title="{{ dep.error }}">{{ dep.error }}</span>
                 {% else %}

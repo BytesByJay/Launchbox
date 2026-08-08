@@ -10,24 +10,54 @@
 </nav>
 
 <div class="flex items-start justify-between mb-6 flex-wrap gap-4">
-    <div class="flex items-center gap-3">
-        {% if app.marked_failed %}
-            <span class="w-3 h-3 rounded-full bg-red-500 shrink-0"></span>
-        {% elif app.health_status in ('healthy', 'running') %}
-            <span class="w-3 h-3 rounded-full bg-emerald-500 shrink-0"></span>
-        {% elif app.health_status == 'unhealthy' %}
-            <span class="w-3 h-3 rounded-full bg-red-500 shrink-0"></span>
-        {% elif app.status == 'not deployed' %}
-            <span class="w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-600 shrink-0"></span>
-        {% else %}
-            <span class="w-3 h-3 rounded-full bg-amber-400 shrink-0"></span>
-        {% endif %}
-        <div>
+    <div>
+        <div class="flex items-center gap-3 flex-wrap">
             <h1 class="text-2xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">{{ app.name }}</h1>
-            <p class="text-sm text-gray-500 dark:text-gray-400 font-mono mt-0.5">
-                {{ app.health_status|title if app.health_status not in ('unknown', None) else app.status|title }}{% if app.container_id %} · {{ app.container_id[:12] }}{% endif %}
-                {% if app.restart_attempts %} · <span class="text-amber-600 dark:text-amber-400">restarted {{ app.restart_attempts }}×</span>{% endif %}
-            </p>
+            {% if app.marked_failed %}
+                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900">
+                    <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Failed
+                </span>
+            {% elif app.health_status == 'healthy' %}
+                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Healthy
+                </span>
+            {% elif app.health_status == 'unhealthy' %}
+                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900">
+                    <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Unhealthy
+                </span>
+            {% elif app.health_status == 'starting' %}
+                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>Starting
+                </span>
+            {% elif app.status == 'running' %}
+                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Running
+                </span>
+            {% else %}
+                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+                    <span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span>{{ app.status|title }}
+                </span>
+            {% endif %}
+            {% if not app.has_local_dir %}
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-400 border border-accent-200 dark:border-accent-800">
+                    <i class="fas fa-code-branch text-[10px]"></i>git push
+                </span>
+            {% endif %}
+        </div>
+        <div class="mt-1.5 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 flex-wrap">
+            {% if app.status == 'running' %}
+                <a href="{{ app.url }}" target="_blank" class="font-mono text-accent-600 dark:text-accent-400 hover:underline">{{ app.url }}</a>
+            {% else %}
+                <span class="font-mono">{{ app.url }}</span>
+            {% endif %}
+            {% if app.last_deployed_at %}
+                <span class="text-gray-300 dark:text-gray-600">·</span>
+                <span>deployed <span data-relative-time="{{ app.last_deployed_at }}">{{ app.last_deployed_at }}</span></span>
+            {% endif %}
+            {% if app.last_commit %}
+                <span class="text-gray-300 dark:text-gray-600">·</span>
+                <span class="font-mono text-xs">{{ app.last_commit[:9] }}</span>
+            {% endif %}
         </div>
     </div>
     <div class="flex items-center gap-2">
@@ -38,206 +68,395 @@
             </a>
         {% endif %}
         {% if app.has_dockerfile %}
-            <button id="deploy-btn" onclick="deployApp('{{ app.name }}', this)" data-loading-label="Deploying"
+            <button onclick="deployApp('{{ app.name }}', this)" data-loading-label="Deploying"
                 class="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-accent-600 hover:bg-accent-700 px-3.5 py-2 rounded-lg transition-colors">
                 <i class="fas fa-rocket text-xs"></i> Deploy
             </button>
         {% endif %}
-        <button id="remove-btn" onclick="removeApp('{{ app.name }}', this)" data-loading-label="Removing"
+        <button onclick="removeApp('{{ app.name }}', this)" data-loading-label="Removing"
             class="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 dark:text-red-400 bg-white dark:bg-gray-900 border border-red-200 dark:border-red-900 hover:bg-red-50 dark:hover:bg-red-950/40 px-3.5 py-2 rounded-lg transition-colors">
             <i class="fas fa-trash text-xs"></i> Remove
         </button>
     </div>
 </div>
 
-{% if repo_path %}
-<div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5 mb-5">
-    <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Deploy source</h2>
-    <p class="text-sm text-gray-500 dark:text-gray-400 mb-3">Push to this remote to trigger a deployment.</p>
-    <div class="space-y-1.5">
-        <div class="flex items-center justify-between gap-2 bg-gray-50 dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-lg px-3 py-2">
-            <code class="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">git remote add launchbox {{ repo_path }}</code>
-            <button onclick="copyText('git remote add launchbox {{ repo_path }}', this)" class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 shrink-0" title="Copy">
-                <i class="fas fa-copy text-xs"></i>
-            </button>
-        </div>
-        <div class="flex items-center justify-between gap-2 bg-gray-50 dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-lg px-3 py-2">
-            <code class="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">git push launchbox main</code>
-            <button onclick="copyText('git push launchbox main', this)" class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 shrink-0" title="Copy">
-                <i class="fas fa-copy text-xs"></i>
-            </button>
-        </div>
-    </div>
+<!-- Tabs: the detail page was one long scroll of six stacked cards, which is
+     how every comparable tool (Render, Heroku, Vercel, Fly) avoids laying
+     out a service page. -->
+<div class="border-b border-gray-200 dark:border-gray-800 mb-6">
+    <nav class="flex gap-1 -mb-px overflow-x-auto" id="detail-tabs">
+        <button data-tab="overview" class="tab-btn whitespace-nowrap px-3.5 py-2.5 text-sm font-medium border-b-2 transition-colors">Overview</button>
+        <button data-tab="environment" class="tab-btn whitespace-nowrap px-3.5 py-2.5 text-sm font-medium border-b-2 transition-colors">
+            Environment{% if editable_env %} <span class="ml-1 text-xs text-gray-400 dark:text-gray-500">{{ editable_env|length }}</span>{% endif %}
+        </button>
+        <button data-tab="database" class="tab-btn whitespace-nowrap px-3.5 py-2.5 text-sm font-medium border-b-2 transition-colors">
+            Database{% if database %} <span class="ml-1 w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block align-middle"></span>{% endif %}
+        </button>
+        <button data-tab="deployments" class="tab-btn whitespace-nowrap px-3.5 py-2.5 text-sm font-medium border-b-2 transition-colors">
+            Deployments{% if history %} <span class="ml-1 text-xs text-gray-400 dark:text-gray-500">{{ history|length }}</span>{% endif %}
+        </button>
+    </nav>
 </div>
-{% endif %}
 
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
-    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5">
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">Configuration</h2>
-        {% if config %}
-            <dl class="space-y-3 text-sm">
-                <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Port</dt><dd class="font-mono text-gray-900 dark:text-gray-100">{{ config.port }}</dd></div>
-                <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">HTTPS</dt><dd class="text-gray-900 dark:text-gray-100">{{ 'Enabled' if config.https_enabled else 'Disabled' }}</dd></div>
-                <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Database</dt><dd class="text-gray-900 dark:text-gray-100">{{ 'Enabled' if config.database_enabled else 'Disabled' }}</dd></div>
-                {% if config.resources %}
-                    {% for key, value in config.resources.items() %}
-                        <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">{{ key|title }} limit</dt><dd class="font-mono text-gray-900 dark:text-gray-100">{{ value }}</dd></div>
+<!-- ============================ OVERVIEW ============================ -->
+<section data-panel="overview" class="tab-panel">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">Configuration</h2>
+            {% if config %}
+                <dl class="space-y-3 text-sm">
+                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Port</dt><dd class="font-mono text-gray-900 dark:text-gray-100">{{ config.port }}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">HTTPS</dt><dd class="text-gray-900 dark:text-gray-100">{{ 'Enabled' if config.https_enabled else 'Disabled' }}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">Database</dt><dd class="text-gray-900 dark:text-gray-100">{{ 'Enabled' if config.database_enabled else 'Disabled' }}</dd></div>
+                    {% if config.resources %}
+                        {% for key, value in config.resources.items() %}
+                            <div class="flex justify-between"><dt class="text-gray-500 dark:text-gray-400">{{ key|title }} limit</dt><dd class="font-mono text-gray-900 dark:text-gray-100">{{ value }}</dd></div>
+                        {% endfor %}
+                    {% endif %}
+                </dl>
+            {% else %}
+                <p class="text-sm text-gray-400 dark:text-gray-500">No configuration found for this application.</p>
+            {% endif %}
+        </div>
+
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">Container</h2>
+            {% if container %}
+                <dl class="space-y-3 text-sm">
+                    <div class="flex justify-between gap-4 items-center">
+                        <dt class="text-gray-500 dark:text-gray-400 shrink-0">ID</dt>
+                        <dd class="flex items-center gap-1.5 min-w-0">
+                            <span class="font-mono text-gray-900 dark:text-gray-100 truncate">{{ container.id[:12] }}</span>
+                            <button onclick="copyText('{{ container.id }}', this)" class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 shrink-0" title="Copy full ID">
+                                <i class="fas fa-copy text-[11px]"></i>
+                            </button>
+                        </dd>
+                    </div>
+                    <div class="flex justify-between gap-4 items-center">
+                        <dt class="text-gray-500 dark:text-gray-400 shrink-0">Image</dt>
+                        <dd class="flex items-center gap-1.5 min-w-0">
+                            <span class="font-mono text-gray-900 dark:text-gray-100 truncate" title="{{ container.image }}">{{ container.image }}</span>
+                            <button onclick="copyText('{{ container.image }}', this)" class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 shrink-0" title="Copy">
+                                <i class="fas fa-copy text-[11px]"></i>
+                            </button>
+                        </dd>
+                    </div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500 dark:text-gray-400 shrink-0">Created</dt><dd class="text-gray-900 dark:text-gray-100" data-relative-time="{{ container.created }}">{{ container.created }}</dd></div>
+                    {% if container.started %}
+                        <div class="flex justify-between gap-4"><dt class="text-gray-500 dark:text-gray-400 shrink-0">Started</dt><dd class="text-gray-900 dark:text-gray-100" data-relative-time="{{ container.started }}">{{ container.started }}</dd></div>
+                    {% endif %}
+                    {% if app.restart_attempts %}
+                        <div class="flex justify-between gap-4"><dt class="text-gray-500 dark:text-gray-400 shrink-0">Restarts</dt><dd class="text-amber-600 dark:text-amber-400">{{ app.restart_attempts }}</dd></div>
+                    {% endif %}
+                </dl>
+            {% else %}
+                <p class="text-sm text-gray-400 dark:text-gray-500">Not currently deployed.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if repo_path %}
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5 mt-5">
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">Deploy source</h2>
+        <p class="text-xs text-gray-400 dark:text-gray-500 mb-3">Push to this remote to trigger a deployment.</p>
+        <div class="space-y-1.5">
+            <div class="flex items-center justify-between gap-2 bg-gray-50 dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-lg px-3 py-2">
+                <code class="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">git remote add launchbox {{ repo_path }}</code>
+                <button onclick="copyText('git remote add launchbox {{ repo_path }}', this)" class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 shrink-0" title="Copy">
+                    <i class="fas fa-copy text-xs"></i>
+                </button>
+            </div>
+            <div class="flex items-center justify-between gap-2 bg-gray-50 dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-lg px-3 py-2">
+                <code class="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">git push launchbox main</code>
+                <button onclick="copyText('git push launchbox main', this)" class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 shrink-0" title="Copy">
+                    <i class="fas fa-copy text-xs"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</section>
+
+<!-- ========================== ENVIRONMENT ========================== -->
+<section data-panel="environment" class="tab-panel hidden">
+    <div id="env-section" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5">
+        {% if editable_env is none %}
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Environment variables</h2>
+            <p class="text-sm text-gray-400 dark:text-gray-500 mt-3">
+                Deploy this application at least once to manage its environment variables here.
+            </p>
+        {% else %}
+            {% if database and database.injected_env %}
+            <div class="mb-6">
+                <div class="flex items-center justify-between mb-1.5">
+                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                        <i class="fas fa-lock text-[10px] mr-1"></i>Managed by the database — not editable
+                    </p>
+                    <div class="flex items-center gap-2">
+                        <button onclick="toggleDbCredentials('{{ app.name }}', this)" class="text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
+                            <i class="fas fa-eye text-[10px] mr-1"></i>Reveal
+                        </button>
+                        <button onclick="copyDbEnvBlock('{{ app.name }}', this)" class="text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200" title="Copy all as .env">
+                            <i class="fas fa-copy text-[10px] mr-1"></i>Copy as .env
+                        </button>
+                    </div>
+                </div>
+                <div class="bg-gray-50 dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-lg divide-y divide-gray-100 dark:divide-gray-800">
+                    {% for key, value in database.injected_env.items() %}
+                    <div class="flex items-baseline gap-2 px-3 py-1.5">
+                        <code class="font-mono text-[11px] text-gray-500 dark:text-gray-400 shrink-0 w-32">{{ key }}</code>
+                        <code id="dbenv-{{ key }}" data-secret="{{ 'yes' if value is none else 'no' }}"
+                            class="font-mono text-[11px] text-gray-800 dark:text-gray-200 truncate">{% if value is none %}••••••••••••{% else %}{{ value }}{% endif %}</code>
+                    </div>
                     {% endfor %}
-                {% endif %}
-            </dl>
-        {% else %}
-            <p class="text-sm text-gray-400 dark:text-gray-500">No configuration found for this application.</p>
+                </div>
+                <p class="mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+                    Re-resolved automatically on every deploy, so editing them here could only
+                    desynchronise this app from the database it is actually pointed at.
+                </p>
+            </div>
+            {% endif %}
+
+            <div class="flex items-center justify-between mb-1">
+                <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    {% if database and database.injected_env %}Custom variables{% else %}Environment variables{% endif %}
+                </h2>
+                <button onclick="addEnvRow()" class="text-xs font-medium text-accent-700 dark:text-accent-400 hover:text-accent-800 dark:hover:text-accent-300">
+                    <i class="fas fa-plus text-[10px] mr-1"></i>Add variable
+                </button>
+            </div>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mb-4">
+                Changes here redeploy the current image with no rebuild — a live patch, not a change
+                to <code class="font-mono">launchbox.yaml</code>. The next real deploy overwrites them.
+            </p>
+
+            <div id="env-rows" class="space-y-2"></div>
+
+            {% if not editable_env %}
+                <p id="env-empty-hint" class="text-sm text-gray-400 dark:text-gray-500">No custom environment variables set.</p>
+            {% endif %}
+
+            <div class="mt-4">
+                <button id="env-save-btn" onclick="saveEnv('{{ app.name }}', this)" data-loading-label="Redeploying"
+                    class="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-accent-600 hover:bg-accent-700 px-3.5 py-2 rounded-lg transition-colors">
+                    <i class="fas fa-floppy-disk text-xs"></i> Save & redeploy
+                </button>
+            </div>
         {% endif %}
     </div>
+</section>
 
-    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5">
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">Container</h2>
-        {% if container %}
-            <dl class="space-y-3 text-sm">
-                <div class="flex justify-between gap-4 items-center">
-                    <dt class="text-gray-500 dark:text-gray-400 shrink-0">ID</dt>
-                    <dd class="flex items-center gap-1.5 min-w-0">
-                        <span class="font-mono text-gray-900 dark:text-gray-100 truncate">{{ container.id[:12] }}</span>
-                        <button onclick="copyText('{{ container.id }}', this)" class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 shrink-0" title="Copy full ID">
-                            <i class="fas fa-copy text-[11px]"></i>
-                        </button>
-                    </dd>
-                </div>
-                <div class="flex justify-between gap-4 items-center">
-                    <dt class="text-gray-500 dark:text-gray-400 shrink-0">Image</dt>
-                    <dd class="flex items-center gap-1.5 min-w-0">
-                        <span class="font-mono text-gray-900 dark:text-gray-100 truncate" title="{{ container.image }}">{{ container.image }}</span>
-                        <button onclick="copyText('{{ container.image }}', this)" class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 shrink-0" title="Copy">
-                            <i class="fas fa-copy text-[11px]"></i>
-                        </button>
-                    </dd>
-                </div>
-                <div class="flex justify-between gap-4"><dt class="text-gray-500 dark:text-gray-400 shrink-0">Created</dt><dd class="text-gray-900 dark:text-gray-100" data-relative-time="{{ container.created }}">{{ container.created }}</dd></div>
-                {% if container.started %}
-                    <div class="flex justify-between gap-4"><dt class="text-gray-500 dark:text-gray-400 shrink-0">Started</dt><dd class="text-gray-900 dark:text-gray-100" data-relative-time="{{ container.started }}">{{ container.started }}</dd></div>
-                {% endif %}
-            </dl>
-        {% else %}
-            <p class="text-sm text-gray-400 dark:text-gray-500">Not currently deployed.</p>
-        {% endif %}
-    </div>
-
+<!-- =========================== DATABASE =========================== -->
+<section data-panel="database" class="tab-panel hidden">
     {% if database %}
-    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5 lg:col-span-2">
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-4">
-            <i class="fas fa-database text-gray-400 dark:text-gray-500 mr-1.5"></i>Database
-        </h2>
+    <div id="database-panel" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5">
+        <div class="flex items-start justify-between mb-4">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                <i class="fas fa-database text-gray-400 dark:text-gray-500 mr-1.5"></i>{{ database.engine|title }}
+            </h2>
+            <button onclick="detachDatabase('{{ app.name }}', this)" data-loading-label="Detaching"
+                class="text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400">
+                <i class="fas fa-unlink text-[10px] mr-1"></i>Detach
+            </button>
+        </div>
         <dl class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-            <div><dt class="text-gray-500 dark:text-gray-400 text-xs mb-1">Engine</dt><dd class="text-gray-900 dark:text-gray-100">{{ database.engine|title }}</dd></div>
             <div><dt class="text-gray-500 dark:text-gray-400 text-xs mb-1">Host</dt><dd class="font-mono text-gray-900 dark:text-gray-100 truncate">{{ database.host }}</dd></div>
             <div><dt class="text-gray-500 dark:text-gray-400 text-xs mb-1">Port</dt><dd class="font-mono text-gray-900 dark:text-gray-100">{{ database.port }}</dd></div>
             <div><dt class="text-gray-500 dark:text-gray-400 text-xs mb-1">Database</dt><dd class="font-mono text-gray-900 dark:text-gray-100 truncate">{{ database.name }}</dd></div>
+            <div><dt class="text-gray-500 dark:text-gray-400 text-xs mb-1">Username</dt><dd class="font-mono text-gray-900 dark:text-gray-100 truncate">{{ database.username }}</dd></div>
         </dl>
-        <p class="mt-3 text-xs text-gray-400 dark:text-gray-500">
-            <i class="fas fa-lock text-[10px] mr-1"></i>Credentials are injected into the container as environment variables and are not shown here.
-        </p>
-    </div>
-    {% endif %}
-</div>
 
-<div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5 mb-6">
-    <div class="flex items-center justify-between mb-1">
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Environment variables</h2>
-        {% if editable_env is not none %}
-        <button onclick="addEnvRow()" class="text-xs font-medium text-accent-700 dark:text-accent-400 hover:text-accent-800 dark:hover:text-accent-300">
-            <i class="fas fa-plus text-[10px] mr-1"></i>Add variable
-        </button>
+        <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+                <dt class="text-gray-500 dark:text-gray-400 text-xs mb-1">Password</dt>
+                <div class="flex items-center justify-between gap-2 bg-gray-50 dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-lg px-3 py-2">
+                    <code id="db-password" class="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">••••••••••••••••</code>
+                    <div class="flex items-center gap-1 shrink-0">
+                        <button onclick="toggleDbCredentials('{{ app.name }}', this)" class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" title="Show / hide">
+                            <i class="fas fa-eye text-xs"></i>
+                        </button>
+                        <button onclick="copyDbSecret('{{ app.name }}', 'password', this)" class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" title="Copy password">
+                            <i class="fas fa-copy text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4">
+            <dt class="text-gray-500 dark:text-gray-400 text-xs mb-1">Connection string</dt>
+            <div class="flex items-center justify-between gap-2 bg-gray-50 dark:bg-gray-950 border border-gray-100 dark:border-gray-800 rounded-lg px-3 py-2">
+                <code id="db-url" data-redacted="{{ database.database_url_redacted }}" class="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">{{ database.database_url_redacted }}</code>
+                <div class="flex items-center gap-1 shrink-0">
+                    <button onclick="toggleDbCredentials('{{ app.name }}', this)" class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" title="Show / hide">
+                        <i class="fas fa-eye text-xs"></i>
+                    </button>
+                    <button onclick="copyDbSecret('{{ app.name }}', 'database_url', this)" class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" title="Copy full connection string">
+                        <i class="fas fa-copy text-xs"></i>
+                    </button>
+                </div>
+            </div>
+            <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                Copy always copies the real value, whether or not it is currently shown.
+            </p>
+        </div>
+
+        {% if not database.has_volume %}
+        <p class="mt-4 text-xs text-amber-600 dark:text-amber-400">
+            <i class="fas fa-triangle-exclamation text-[10px] mr-1"></i>No persistent volume — data does not survive if this database's container is removed.
+        </p>
         {% endif %}
-    </div>
-
-    {% if editable_env is none %}
-        <p class="text-sm text-gray-400 dark:text-gray-500 mt-3">
-            Deploy this application at least once to manage its environment variables here.
+        <p class="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+            Detaching stops injecting these credentials into future deployments. The database container and its data are kept —
+            use <code class="font-mono">launchbox remove {{ app.name }} --with-database</code> to destroy them.
         </p>
-    {% else %}
+    </div>
+    {% elif editable_env is not none %}
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5">
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
+            <i class="fas fa-database text-gray-400 dark:text-gray-500 mr-1.5"></i>Database
+        </h2>
         <p class="text-xs text-gray-400 dark:text-gray-500 mb-4">
-            Changes here redeploy the current image with no rebuild — a live patch, not a change
-            to <code class="font-mono">launchbox.yaml</code>. The next real deploy overwrites them.
-            {% if database %}Database connection variables are managed automatically and are not listed.{% endif %}
+            No database provisioned. Adding one redeploys the current image with no rebuild — a live patch, not a change to
+            <code class="font-mono">launchbox.yaml</code>.
         </p>
-
-        <div id="env-rows" class="space-y-2"></div>
-
-        {% if not editable_env %}
-            <p id="env-empty-hint" class="text-sm text-gray-400 dark:text-gray-500">No custom environment variables set.</p>
-        {% endif %}
-
-        <div class="mt-4 flex items-center gap-2">
-            <button id="env-save-btn" onclick="saveEnv('{{ app.name }}', this)" data-loading-label="Redeploying"
-                class="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-accent-600 hover:bg-accent-700 px-3.5 py-2 rounded-lg transition-colors">
-                <i class="fas fa-floppy-disk text-xs"></i> Save & redeploy
+        <div class="flex flex-wrap items-end gap-2">
+            <div>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Engine</label>
+                <select id="db-engine" onchange="updateDbPlaceholders()"
+                    class="px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 text-gray-900 dark:text-gray-100">
+                    {% for engine in database_engines %}
+                        <option value="{{ engine }}">{{ engine|title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Version</label>
+                <input id="db-version" type="text" placeholder="13"
+                    class="w-20 px-2.5 py-1.5 text-xs font-mono bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 text-gray-900 dark:text-gray-100">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Name</label>
+                <input id="db-name" type="text" placeholder="{{ app.name }}_db"
+                    class="w-32 px-2.5 py-1.5 text-xs font-mono bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 text-gray-900 dark:text-gray-100">
+            </div>
+            <button id="db-provision-btn" onclick="provisionDatabase('{{ app.name }}', this)" data-loading-label="Provisioning"
+                class="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-accent-600 hover:bg-accent-700 px-3.5 py-1.5 rounded-lg transition-colors">
+                <i class="fas fa-plus text-xs"></i> Add database
             </button>
         </div>
-    {% endif %}
-</div>
-
-<div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card overflow-hidden">
-    <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Deployment history</h2>
     </div>
-    {% if history %}
-        <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-            <thead>
-                <tr class="text-left text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
-                    <th class="px-5 py-2.5 font-medium">Commit</th>
-                    <th class="px-5 py-2.5 font-medium">Status</th>
-                    <th class="px-5 py-2.5 font-medium">Started</th>
-                    <th class="px-5 py-2.5 font-medium">Detail</th>
-                    <th class="px-5 py-2.5 font-medium text-right">Action</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-50 dark:divide-gray-800/60">
-                {% for dep in history %}
-                <tr class="hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
-                    <td class="px-5 py-3 font-mono text-gray-900 dark:text-gray-100">{{ (dep.commit_sha or 'latest')[:9] }}</td>
-                    <td class="px-5 py-3">
-                        {% if dep.status == 'success' %}
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900">
-                                <i class="fas fa-check text-[10px]"></i> Success
-                            </span>
-                        {% elif dep.status == 'failed' %}
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900">
-                                <i class="fas fa-xmark text-[10px]"></i> Failed
-                            </span>
-                        {% else %}
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900">
-                                <i class="fas fa-spinner text-[10px]"></i> In progress
-                            </span>
-                        {% endif %}
-                    </td>
-                    <td class="px-5 py-3 text-gray-500 dark:text-gray-400" data-relative-time="{{ dep.started_at }}">{{ dep.started_at }}</td>
-                    <td class="px-5 py-3 text-gray-500 dark:text-gray-400 max-w-xs truncate" title="{{ dep.error or '' }}">
-                        {{ dep.error or '—' }}
-                    </td>
-                    <td class="px-5 py-3 text-right">
-                        {% if dep.status == 'success' and dep.id != current_deployment_id %}
-                            <button onclick="rollbackTo('{{ app.name }}', '{{ dep.commit_sha }}', this)" data-loading-label="Rolling back"
-                                class="inline-flex items-center gap-1.5 text-xs font-medium text-accent-700 dark:text-accent-400 bg-accent-50 dark:bg-accent-950/40 hover:bg-accent-100 dark:hover:bg-accent-900/40 px-2.5 py-1 rounded-md transition-colors">
-                                <i class="fas fa-clock-rotate-left text-[10px]"></i> Roll back
-                            </button>
-                        {% elif dep.id == current_deployment_id %}
-                            <span class="text-xs text-gray-400 dark:text-gray-500 font-medium">Current</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        </div>
     {% else %}
-        <p class="px-5 py-8 text-center text-sm text-gray-400 dark:text-gray-500">No deployments recorded yet.</p>
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card p-5">
+        <p class="text-sm text-gray-400 dark:text-gray-500">Deploy this application at least once before adding a database.</p>
+    </div>
     {% endif %}
-</div>
+</section>
+
+<!-- ========================= DEPLOYMENTS ========================= -->
+<section data-panel="deployments" class="tab-panel hidden">
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-card overflow-hidden">
+        {% if history %}
+            <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-left text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
+                        <th class="px-5 py-2.5 font-medium">Kind</th>
+                        <th class="px-5 py-2.5 font-medium">Commit</th>
+                        <th class="px-5 py-2.5 font-medium">Status</th>
+                        <th class="px-5 py-2.5 font-medium">Started</th>
+                        <th class="px-5 py-2.5 font-medium">Detail</th>
+                        <th class="px-5 py-2.5 font-medium text-right">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-50 dark:divide-gray-800/60">
+                    {% for dep in history %}
+                    <tr class="hover:bg-gray-50/60 dark:hover:bg-gray-800/40">
+                        <td class="px-5 py-3">
+                            {% if dep.kind == 'rollback' %}
+                                <span class="inline-flex items-center gap-1 text-xs text-accent-700 dark:text-accent-400"><i class="fas fa-clock-rotate-left text-[10px]"></i>Rollback</span>
+                            {% elif dep.kind == 'env' %}
+                                <span class="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"><i class="fas fa-sliders text-[10px]"></i>Env update</span>
+                            {% elif dep.kind == 'database' %}
+                                <span class="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"><i class="fas fa-database text-[10px]"></i>Database</span>
+                            {% else %}
+                                <span class="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"><i class="fas fa-rocket text-[10px]"></i>Deploy</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-3 font-mono text-gray-900 dark:text-gray-100">{{ (dep.commit_sha or 'latest')[:9] }}</td>
+                        <td class="px-5 py-3">
+                            {% if dep.status == 'success' %}
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900">
+                                    <i class="fas fa-check text-[10px]"></i> Success
+                                </span>
+                            {% elif dep.status == 'failed' %}
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900">
+                                    <i class="fas fa-xmark text-[10px]"></i> Failed
+                                </span>
+                            {% else %}
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900">
+                                    <i class="fas fa-spinner text-[10px]"></i> In progress
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-3 text-gray-500 dark:text-gray-400" data-relative-time="{{ dep.started_at }}">{{ dep.started_at }}</td>
+                        <td class="px-5 py-3 text-gray-500 dark:text-gray-400 max-w-xs truncate" title="{{ dep.error or '' }}">
+                            {{ dep.error or '—' }}
+                        </td>
+                        <td class="px-5 py-3 text-right">
+                            {% if dep.status == 'success' and dep.id != current_deployment_id %}
+                                <button onclick="rollbackTo('{{ app.name }}', '{{ dep.commit_sha }}', this)" data-loading-label="Rolling back"
+                                    class="inline-flex items-center gap-1.5 text-xs font-medium text-accent-700 dark:text-accent-400 bg-accent-50 dark:bg-accent-950/40 hover:bg-accent-100 dark:hover:bg-accent-900/40 px-2.5 py-1 rounded-md transition-colors">
+                                    <i class="fas fa-clock-rotate-left text-[10px]"></i> Roll back
+                                </button>
+                            {% elif dep.id == current_deployment_id %}
+                                <span class="text-xs text-gray-400 dark:text-gray-500 font-medium">Current</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        {% else %}
+            <p class="px-5 py-8 text-center text-sm text-gray-400 dark:text-gray-500">No deployments recorded yet.</p>
+        {% endif %}
+    </div>
+</section>
 {% endblock %}
 
 {% block scripts %}
 <script>
+    // ---- Tabs ---------------------------------------------------------------
+    // The active tab lives in the URL hash so a reload (which every mutating
+    // action here triggers) returns to the tab you were on rather than
+    // bouncing back to Overview.
+    const TABS = ['overview', 'environment', 'database', 'deployments'];
+
+    function activateTab(name, pushHash = true) {
+        if (!TABS.includes(name)) name = 'overview';
+
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            const active = btn.dataset.tab === name;
+            btn.className = 'tab-btn whitespace-nowrap px-3.5 py-2.5 text-sm font-medium border-b-2 transition-colors ' + (
+                active
+                    ? 'border-accent-600 text-accent-700 dark:text-accent-400 dark:border-accent-400'
+                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
+            );
+        });
+        document.querySelectorAll('.tab-panel').forEach(panel => {
+            panel.classList.toggle('hidden', panel.dataset.panel !== name);
+        });
+        if (pushHash) history.replaceState(null, '', '#' + name);
+    }
+
+    document.getElementById('detail-tabs').addEventListener('click', (e) => {
+        const btn = e.target.closest('.tab-btn');
+        if (btn) activateTab(btn.dataset.tab);
+    });
+
+    activateTab((location.hash || '').replace('#', '') || 'overview', false);
+
     document.querySelectorAll('[data-relative-time]').forEach(el => {
         const value = el.dataset.relativeTime;
         if (value) el.textContent = relativeTime(value);
@@ -328,6 +547,139 @@
             setTimeout(() => location.reload(), 1200);
         } catch (error) {
             showToast(error.response?.data?.error || 'Failed to update environment', 'error');
+            hideLoading(button);
+        }
+    }
+
+    // ---- Database credentials ----------------------------------------------
+    // Fetched on demand rather than rendered into the page, so the password
+    // is not in the page source, the browser cache or a screenshot until
+    // someone explicitly asks for it.
+    let dbCredentials = null;
+    let dbCredentialsShown = false;
+
+    async function fetchDbCredentials(appName) {
+        if (dbCredentials) return dbCredentials;
+        const response = await axios.get(`/api/apps/${appName}/database/credentials`);
+        dbCredentials = response.data;
+        return dbCredentials;
+    }
+
+    const MASK = '••••••••••••';
+
+    function setRevealIcons(shown) {
+        document.querySelectorAll('.fa-eye, .fa-eye-slash').forEach(icon => {
+            if (!icon.closest('button')) return;
+            const onclick = icon.closest('button').getAttribute('onclick') || '';
+            if (!onclick.includes('toggleDbCredentials')) return;
+            const size = icon.className.includes('text-[10px]') ? 'text-[10px] mr-1' : 'text-xs';
+            icon.className = `fas ${shown ? 'fa-eye-slash' : 'fa-eye'} ${size}`;
+        });
+    }
+
+    function applyDbSecrets(creds) {
+        document.getElementById('db-password').textContent = creds.password;
+        document.getElementById('db-url').textContent = creds.database_url;
+        // The injected-variable rows carry the same two secrets.
+        document.querySelectorAll('[id^="dbenv-"]').forEach(el => {
+            if (el.dataset.secret !== 'yes') return;
+            const key = el.id.replace('dbenv-', '');
+            if (creds.env && creds.env[key] !== undefined) el.textContent = creds.env[key];
+        });
+    }
+
+    function maskDbSecrets() {
+        document.getElementById('db-password').textContent = MASK + '••••';
+        const urlEl = document.getElementById('db-url');
+        urlEl.textContent = urlEl.dataset.redacted;
+        document.querySelectorAll('[id^="dbenv-"]').forEach(el => {
+            if (el.dataset.secret === 'yes') el.textContent = MASK;
+        });
+    }
+
+    async function toggleDbCredentials(appName, button) {
+        if (dbCredentialsShown) {
+            maskDbSecrets();
+            dbCredentialsShown = false;
+            setRevealIcons(false);
+            return;
+        }
+
+        showLoading(button);
+        try {
+            applyDbSecrets(await fetchDbCredentials(appName));
+            dbCredentialsShown = true;
+            hideLoading(button);
+            setRevealIcons(true);
+        } catch (error) {
+            hideLoading(button);
+            showToast(error.response?.data?.error || 'Could not read credentials', 'error');
+        }
+    }
+
+    async function copyDbSecret(appName, field, button) {
+        try {
+            const creds = await fetchDbCredentials(appName);
+            copyText(creds[field], button);
+        } catch (error) {
+            showToast(error.response?.data?.error || 'Could not read credentials', 'error');
+        }
+    }
+
+    async function copyDbEnvBlock(appName, button) {
+        try {
+            const creds = await fetchDbCredentials(appName);
+            const block = Object.keys(creds.env).sort()
+                .map(key => `${key}=${creds.env[key]}`).join('\n');
+            copyText(block, button);
+        } catch (error) {
+            showToast(error.response?.data?.error || 'Could not read credentials', 'error');
+        }
+    }
+
+    // ---- Database provisioning ---------------------------------------------
+    const engineDefaultVersions = {{ database_engine_defaults|tojson }};
+
+    function updateDbPlaceholders() {
+        const engineSelect = document.getElementById('db-engine');
+        const versionInput = document.getElementById('db-version');
+        if (!engineSelect || !versionInput) return;
+        versionInput.placeholder = engineDefaultVersions[engineSelect.value] || '';
+    }
+    updateDbPlaceholders();
+
+    async function provisionDatabase(appName, button) {
+        const engine = document.getElementById('db-engine').value;
+        const version = document.getElementById('db-version').value.trim();
+        const name = document.getElementById('db-name').value.trim();
+
+        if (!confirm(`Provision a ${engine} database for ${appName}? This redeploys the current image with the new credentials injected.`)) return;
+
+        showLoading(button);
+        try {
+            await axios.post(`/api/apps/${appName}/database`, {
+                engine,
+                version: version || undefined,
+                name: name || undefined,
+            });
+            showToast(`Database provisioned — redeploying <strong>${appName}</strong>`, 'success');
+            setTimeout(() => location.reload(), 1200);
+        } catch (error) {
+            showToast(error.response?.data?.error || 'Failed to provision database', 'error');
+            hideLoading(button);
+        }
+    }
+
+    async function detachDatabase(appName, button) {
+        if (!confirm(`Detach the database from ${appName}? The database and its data are kept — only the injected credentials stop.`)) return;
+
+        showLoading(button);
+        try {
+            await axios.delete(`/api/apps/${appName}/database`);
+            showToast(`Database detached — redeploying <strong>${appName}</strong>`, 'success');
+            setTimeout(() => location.reload(), 1200);
+        } catch (error) {
+            showToast(error.response?.data?.error || 'Failed to detach database', 'error');
             hideLoading(button);
         }
     }

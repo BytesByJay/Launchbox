@@ -458,3 +458,48 @@ def test_list_recent_deployments_includes_failures(store):
 
     assert recent[0]["status"] == "failed"
     assert recent[0]["error"] == "build failed"
+
+
+# ------------------------------------------------------------- deployment kind
+
+
+def test_record_start_defaults_kind_to_deploy(store):
+    dep_id = store.record_start("myapp", "abc1234")
+    assert store.get_deployment(dep_id)["kind"] == "deploy"
+
+
+def test_record_start_persists_an_explicit_kind(store):
+    dep_id = store.record_start("myapp", "abc1234", kind="rollback")
+    assert store.get_deployment(dep_id)["kind"] == "rollback"
+
+
+def test_a_row_predating_the_kind_column_reads_as_none_not_an_error(
+    tmp_path
+):
+    """A database written before this column existed must still open and
+    read cleanly -- the reading side is what decides an absent kind means
+    'deploy', not a NULL constraint at write time.
+    """
+    import sqlite3
+
+    db_path = str(tmp_path / "pre-kind.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE deployments (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "app_name TEXT NOT NULL, commit_sha TEXT, image_tag TEXT, "
+        "container_name TEXT, status TEXT NOT NULL, started_at TEXT NOT NULL, "
+        "finished_at TEXT, error TEXT, logs TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO deployments (app_name, commit_sha, status, started_at) "
+        "VALUES ('myapp', 'abc1234', 'success', '2026-01-01T00:00:00+00:00')"
+    )
+    conn.commit()
+    conn.close()
+
+    store = StateStore(db_path)
+    try:
+        row = store.list_deployments("myapp")[0]
+        assert row["kind"] is None
+    finally:
+        store.close()

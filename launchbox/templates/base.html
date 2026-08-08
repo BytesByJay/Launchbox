@@ -147,7 +147,16 @@
 
         function relativeTime(isoString) {
             if (!isoString) return '—';
-            const then = new Date(isoString.replace(' ', 'T') + (isoString.endsWith('Z') ? '' : 'Z'));
+            // Only assume UTC and append 'Z' when the string carries NO
+            // timezone information at all. state.py's timestamps carry an
+            // explicit "+00:00" offset (Python's isoformat()), not a bare
+            // 'Z' -- checking endsWith('Z') alone missed that case and
+            // appended a second, contradictory zone marker, producing an
+            // unparseable string that silently fell back to raw text.
+            let normalized = isoString.replace(' ', 'T');
+            const hasTimezone = /[Zz]$/.test(normalized) || /[+-]\d{2}:?\d{2}$/.test(normalized);
+            if (!hasTimezone) normalized += 'Z';
+            const then = new Date(normalized);
             if (isNaN(then.getTime())) return isoString;
             const seconds = Math.floor((Date.now() - then.getTime()) / 1000);
             if (seconds < 5) return 'just now';

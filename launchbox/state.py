@@ -70,6 +70,11 @@ _ADDED_DEPLOYMENT_COLUMNS = (
     ("config_json", "TEXT"),
     ("env_json", "TEXT"),
     ("image_id", "TEXT"),
+    # What triggered this row: deploy | rollback | env | database. An old
+    # row predating this column reads as NULL, which the reading side
+    # treats identically to "deploy" -- every row before this existed was
+    # a plain deploy, since rollback/env/database updates did not exist yet.
+    ("kind", "TEXT"),
 )
 
 
@@ -151,6 +156,7 @@ class StateStore:
         commit_sha: Optional[str],
         config_json: Optional[str] = None,
         env_json: Optional[str] = None,
+        kind: str = "deploy",
     ) -> int:
         """Open a deployment row.
 
@@ -164,10 +170,10 @@ class StateStore:
         """
         cur = self._conn.execute(
             "INSERT INTO deployments (app_name, commit_sha, status, started_at, "
-            "config_json, env_json) VALUES (?, ?, ?, ?, ?, ?)",
+            "config_json, env_json, kind) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 app_name, commit_sha, STATUS_IN_PROGRESS, _now(),
-                config_json, env_json,
+                config_json, env_json, kind,
             ),
         )
         self._ensure_app_row(app_name)

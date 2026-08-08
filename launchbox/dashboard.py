@@ -7,11 +7,19 @@ from pathlib import Path
 from datetime import datetime
 from launchbox.config import APPS_DIR, REPOS_DIR
 from launchbox.config_parser import LaunchboxConfig
-from launchbox.deploy import deploy, remove_app, rollback, update_env, RESERVED_ENV_KEYS
+from launchbox.deploy import (
+    deploy, remove_app, rollback, update_env, RESERVED_ENV_KEYS,
+    configure_database, detach_database, DATABASE_ENGINES,
+)
 from launchbox.init import init as init_app
 from launchbox.ssl_manager import SSLManager
 from launchbox.logger import setup_logger, LaunchboxError
 from launchbox.state import StateStore
+
+# The two injected variables that contain the password. Everything else
+# Launchbox injects (host, port, database name, user, engine) is not a
+# secret and is more useful on the page than hidden behind a click.
+SECRET_DB_KEYS = frozenset({'DB_PASSWORD', 'DATABASE_URL'})
 
 logger = setup_logger("dashboard")
 
@@ -94,6 +102,8 @@ def _base_app_info(name, path=None):
         'marked_failed': False,
         'restart_attempts': 0,
         'has_repo': os.path.isdir(os.path.join(REPOS_DIR, f"{name}.git")),
+        'last_deployed_at': None,
+        'last_commit': None,
     }
 
 
@@ -112,12 +122,27 @@ def _apply_config_from_mapping(app_info, mapping):
         app_info['url'] = f"https://{app_info['name']}.localhost"
 
 
-def _apply_state_row(app_info, state_row):
+def _apply_state_row(app_info, state_row, store=None):
     if not state_row:
         return
     app_info['health_state'] = state_row.get('health_state')
     app_info['marked_failed'] = bool(state_row.get('marked_failed'))
     app_info['restart_attempts'] = int(state_row.get('restart_attempts') or 0)
+
+    # When the app last actually went live, and on what commit. Reading it
+    # from the current deployment rather than the container's created time
+    # means it survives a container being restarted by hand.
+    current_deployment = state_row.get('current_deployment')
+    if store is not None and current_deployment:
+        try:
+            deployment = store.get_deployment(current_deployment)
+            if deployment:
+                app_info['last_deployed_at'] = deployment.get('started_at')
+                app_info['last_commit'] = deployment.get('commit_sha')
+        except Exception as e:
+            logger.warning(
+                f"Failed to read last deployment for {app_info['name']}: {e}"
+            )
 
 
 def _apply_container_info(app_info, store):
@@ -195,7 +220,7 @@ def get_app_list():
                             )
                     by_name[name] = info
 
-                _apply_state_row(by_name[name], state_row)
+                _apply_state_row(by_name[name], state_row, store=store)
 
         for info in by_name.values():
             _apply_container_info(info, store)
@@ -339,6 +364,114 @@ def api_update_env(app_name):
         return jsonify({'error': str(e)}), 500
     except Exception as e:
         logger.error(f"Failed to update environment for {app_name}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/apps/<app_name>/database', methods=['POST'])
+def api_configure_database(app_name):
+    """Provision a database for the running application, no rebuild.
+
+    Redeploys the current image through the same health-gated path as
+    rollback, with the database section of its configuration overridden to
+    the requested engine.
+    """
+    try:
+        payload = request.get_json(silent=True) or {}
+        engine = payload.get('engine')
+        if not engine:
+            return jsonify({'error': 'engine is required'}), 400
+
+        container_name = configure_database(
+            app_name, engine,
+            version=payload.get('version'),
+            db_name=payload.get('name'),
+        )
+
+        return jsonify({
+            'message': f'Provisioned {engine} database for {app_name}',
+            'container': container_name,
+        }), 201
+
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except LaunchboxError as e:
+        return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        logger.error(f"Failed to provision database for {app_name}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/apps/<app_name>/database/credentials')
+def api_database_credentials(app_name):
+    """The database password, fetched only when explicitly asked for.
+
+    Deliberately not rendered into the detail page: a password baked into
+    the HTML ends up in the page source, the browser cache, and any
+    screenshot of the page. Fetching it on demand keeps it out of all
+    three until someone actually clicks reveal.
+
+    This is not a new class of exposure -- the environment editor already
+    renders an application's other secrets, and anyone who can reach this
+    dashboard can already deploy and remove applications. It stays behind
+    an explicit action rather than being on by default.
+    """
+    try:
+        with StateStore() as store:
+            db_row = store.get_database(app_name)
+
+        if not db_row:
+            return jsonify({'error': 'No database provisioned'}), 404
+
+        default_ports = {'postgresql': 5432, 'mysql': 3306, 'mongodb': 27017}
+        port = default_ports.get(db_row['engine'])
+
+        database_url = (
+            f"{db_row['engine']}://{db_row['username']}:"
+            f"{db_row['password']}@{db_row['container_name']}:"
+            f"{port}/{db_row['db_name']}"
+        )
+
+        return jsonify({
+            'username': db_row['username'],
+            'password': db_row['password'],
+            'database_url': database_url,
+            # The complete set as actually injected, so the page can reveal
+            # the secret values in place and offer a copyable .env block
+            # without reassembling them itself.
+            'env': {
+                'DATABASE_URL': database_url,
+                'DB_HOST': db_row['container_name'],
+                'DB_PORT': str(port),
+                'DB_NAME': db_row['db_name'],
+                'DB_USER': db_row['username'],
+                'DB_PASSWORD': db_row['password'],
+                'DB_TYPE': db_row['engine'],
+            },
+        })
+
+    except Exception as e:
+        logger.error(f"Failed to read credentials for {app_name}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/apps/<app_name>/database', methods=['DELETE'])
+def api_detach_database(app_name):
+    """Stop injecting database credentials. The database and its data stay.
+
+    To destroy the database itself, use the remove endpoint's
+    ?with_database flag instead.
+    """
+    try:
+        container_name = detach_database(app_name)
+
+        return jsonify({
+            'message': f'Detached database from {app_name}',
+            'container': container_name,
+        })
+
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except LaunchboxError as e:
+        return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        logger.error(f"Failed to detach database from {app_name}: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/apps/<app_name>/stop', methods=['POST'])
@@ -507,6 +640,8 @@ def app_detail(app_name):
             # their own panel below and are re-provisioned automatically, so
             # editing them here would silently desynchronise a container from
             # the database it is actually pointed at.
+            injected_db_keys = []
+            injected_db_env = {}
             if current_deployment:
                 raw_env = current_deployment.get('env_json')
                 if raw_env:
@@ -515,6 +650,21 @@ def app_detail(app_name):
                         editable_env = {
                             k: v for k, v in resolved.items()
                             if k not in RESERVED_ENV_KEYS
+                        }
+                        # Which of the reserved keys are actually present for
+                        # THIS app, not a generic list of all seven -- an app
+                        # without DATABASE_URL wired up (HTTPS off, say)
+                        # should not claim it has one.
+                        injected_db_keys = sorted(
+                            k for k in resolved if k in RESERVED_ENV_KEYS
+                        )
+                        # Values for the non-secret keys render directly;
+                        # the two that embed the password are sent as None
+                        # and fetched on demand by the reveal control.
+                        injected_db_env = {
+                            k: (None if k in SECRET_DB_KEYS else v)
+                            for k, v in sorted(resolved.items())
+                            if k in RESERVED_ENV_KEYS
                         }
                     except Exception as e:
                         logger.warning(
@@ -532,7 +682,17 @@ def app_detail(app_name):
                     'port': default_ports.get(db_row['engine']),
                     'name': db_row['db_name'],
                     'username': db_row['username'],
-                    # Password is deliberately never sent to the browser.
+                    # Password is deliberately never sent to the browser --
+                    # redacted here rather than omitted, so the rest of the
+                    # connection string is still there to copy.
+                    'database_url_redacted': (
+                        f"{db_row['engine']}://{db_row['username']}:***@"
+                        f"{db_row['container_name']}:"
+                        f"{default_ports.get(db_row['engine'])}/{db_row['db_name']}"
+                    ),
+                    'injected_keys': injected_db_keys,
+                    'injected_env': injected_db_env,
+                    'has_volume': bool(db_row.get('volume_name')),
                 }
     except Exception as e:
         logger.warning(f"Failed to load deployment history for {app_name}: {e}")
@@ -547,7 +707,9 @@ def app_detail(app_name):
                          current_deployment_id=current_deployment_id,
                          database=database_info,
                          repo_path=repo_path,
-                         editable_env=editable_env)
+                         editable_env=editable_env,
+                         database_engines=sorted(DATABASE_ENGINES.keys()),
+                         database_engine_defaults=DATABASE_ENGINES)
 
 def main():
     """Entry point used by ``python3 -m launchbox dashboard``."""

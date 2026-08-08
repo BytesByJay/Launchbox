@@ -123,6 +123,18 @@ def _find_previous_container(app_name: str, store: StateStore) -> Optional[str]:
     return current
 
 
+RESERVED_ENV_KEYS = frozenset({
+    'DATABASE_URL', 'DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER',
+    'DB_PASSWORD', 'DB_TYPE',
+})
+
+DATABASE_ENGINES = {
+    'postgresql': '13',
+    'mysql': '8',
+    'mongodb': '7',
+}
+
+
 def _database_environment(
     app_name: str, source_dir: Optional[str], config: LaunchboxConfig
 ) -> Dict[str, str]:
@@ -307,7 +319,7 @@ def deploy(
     try:
         store = store or StateStore()
 
-        deployment_id = store.record_start(app_name, commit_sha)
+        deployment_id = store.record_start(app_name, commit_sha, kind="deploy")
         logger.info(f"Deployment {deployment_id} started for {app_name}")
 
         config = LaunchboxConfig(build_source)
@@ -459,9 +471,151 @@ def _replayed_environment(
     if not isinstance(stored, dict):
         stored = {}
 
-    env_vars = dict(stored)
+    env_vars = {k: v for k, v in stored.items() if k not in RESERVED_ENV_KEYS}
     env_vars.update(_database_environment(app_name, None, config))
     return _stringify_env(env_vars)
+
+
+def _redeploy_with_database_change(app_name, store, mutate_config, action, kind):
+    """Shared machinery for configure_database and detach_database.
+
+    Both redeploy the application's current image -- no rebuild -- after
+    mutating the database section of its replayed configuration, and let the
+    environment be recomputed from that mutated section. Goes through the
+    same health-gated promotion as every other redeploy path, so a change
+    whose probe fails leaves the currently running version untouched.
+    """
+    app_row = store.get_app(app_name)
+    current_id = app_row.get('current_deployment') if app_row else None
+    if not current_id:
+        raise DeploymentError(f"{app_name}: no current deployment to update")
+
+    target = store.get_deployment(current_id)
+    if target is None:
+        raise DeploymentError(f"{app_name}: current deployment record is missing")
+
+    image_ref = _resolve_rollback_image(app_name, target)
+    config = _replayed_config(app_name, target)
+    mutate_config(config)
+
+    env_vars = _replayed_environment(app_name, config, target)
+
+    previous = _find_previous_container(app_name, store)
+    commit_sha = target.get('commit_sha')
+    container_name = f"{app_name}-{_short(commit_sha)}"
+    if runner.container_exists(container_name) or container_name == previous:
+        container_name = f"{container_name}-{int(time.time())}"
+
+    deployment_id = store.record_start(
+        app_name,
+        commit_sha,
+        config_json=json.dumps(config.config, default=str, sort_keys=True),
+        env_json=json.dumps(env_vars, sort_keys=True),
+        kind=kind,
+    )
+    logger.info(f"{action} for {app_name} (deployment {deployment_id})")
+
+    return _run_promotion(store, deployment_id, lambda: _promote(
+        app_name=app_name,
+        container_name=container_name,
+        image_ref=image_ref,
+        config=config,
+        env_vars=env_vars,
+        commit_sha=commit_sha,
+        previous_container=previous,
+        store=store,
+        deployment_id=deployment_id,
+        image_id=target.get('image_id'),
+    ))
+
+
+def configure_database(
+    app_name: str,
+    engine: str,
+    version: Optional[str] = None,
+    db_name: Optional[str] = None,
+    store: Optional[StateStore] = None,
+) -> str:
+    """Provision a database for the running application, no rebuild.
+
+    Overrides the database section of the current deployment's replayed
+    configuration with the requested engine, then redeploys the same image
+    so provisioning actually runs and the new credentials get injected. This
+    is how a database gets added to an application that was deployed
+    without one -- including a git-push-only application, which has no
+    local launchbox.yaml to edit.
+
+    Like update_env, nothing is written back to the application's source.
+    The next real deploy reads launchbox.yaml fresh; if that file does not
+    also declare `database.enabled: true`, the next deploy stops injecting
+    these credentials -- the database and its data are not deleted, only the
+    injection stops. Use detach_database to do that deliberately instead.
+    """
+    validate_app_name(app_name)
+
+    if engine not in DATABASE_ENGINES:
+        raise ValueError(
+            f"Unsupported database engine: {engine!r}. Choose one of: "
+            f"{', '.join(sorted(DATABASE_ENGINES))}."
+        )
+
+    owns_store = store is None
+    store = store or StateStore()
+
+    def mutate(config):
+        config.config['database'] = {
+            'enabled': True,
+            'type': engine,
+            'version': version or DATABASE_ENGINES[engine],
+            'name': db_name or f"{app_name}_db",
+        }
+
+    try:
+        return _redeploy_with_database_change(
+            app_name, store, mutate, f"Provisioning {engine} database",
+            kind="database",
+        )
+    finally:
+        if owns_store:
+            store.close()
+
+
+def detach_database(app_name: str, store: Optional[StateStore] = None) -> str:
+    """Stop injecting database credentials into the running application.
+
+    The database container and its data are left running untouched -- this
+    only stops handing its connection details to future containers. To
+    destroy the database itself, use
+    ``remove_app(app_name, remove_database=True)``.
+
+    Also forgets the app-to-database association in the state store, once
+    the redeploy has actually succeeded -- otherwise the dashboard kept
+    showing the old connection details and a "Detach" button for a database
+    that was no longer being injected into anything. The record is only
+    bookkeeping: `configure_database` rediscovers the same still-running
+    container (DatabaseManager reuses a container that already exists by
+    name) if the same engine is attached again later, so nothing here
+    affects the container or its data.
+    """
+    validate_app_name(app_name)
+
+    owns_store = store is None
+    store = store or StateStore()
+
+    def mutate(config):
+        db = dict(config.config.get('database') or {})
+        db['enabled'] = False
+        config.config['database'] = db
+
+    try:
+        result = _redeploy_with_database_change(
+            app_name, store, mutate, "Detaching database", kind="database"
+        )
+        store.delete_database(app_name)
+        return result
+    finally:
+        if owns_store:
+            store.close()
 
 
 def remove_app(
@@ -532,12 +686,6 @@ def remove_app(
             store.close()
 
 
-RESERVED_ENV_KEYS = frozenset({
-    'DATABASE_URL', 'DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER',
-    'DB_PASSWORD', 'DB_TYPE',
-})
-
-
 def update_env(
     app_name: str,
     set_vars: Optional[Dict[str, str]] = None,
@@ -604,6 +752,7 @@ def update_env(
             commit_sha,
             config_json=json.dumps(config.config, default=str, sort_keys=True),
             env_json=json.dumps(env_vars, sort_keys=True),
+            kind="env",
         )
         logger.info(
             f"Updating environment for {app_name} (deployment {deployment_id})"
@@ -675,6 +824,7 @@ def rollback(
             target_sha,
             config_json=json.dumps(config.config, default=str, sort_keys=True),
             env_json=json.dumps(env_vars, sort_keys=True),
+            kind="rollback",
         )
         logger.info(
             f"Rolling {app_name} back to {_short(target_sha)} "

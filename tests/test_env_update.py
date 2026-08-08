@@ -409,3 +409,410 @@ def test_cli_env_returns_nonzero_on_deployment_error(mocker):
                         side_effect=DeploymentError("health probe failed"))
 
     assert cli.main(["env", "myapp", "--set", "DEBUG=true"]) == 1
+
+
+# =======================================================================
+# configure_database / detach_database
+# =======================================================================
+
+
+def test_configure_database_provisions_and_redeploys(store, deployed,
+                                                      fake_docker, mocker):
+    from launchbox import deploy as deploy_module
+    from launchbox.deploy import configure_database
+
+    manager = mocker.patch.object(deploy_module, "DatabaseManager")
+    manager.return_value.create_database_for_app.return_value = {
+        "DATABASE_URL": "postgresql://fresh", "DB_HOST": "myapp_postgres",
+    }
+
+    name = configure_database("myapp", "postgresql", store=store)
+
+    assert name.startswith("myapp-abc1234")
+    env = fake_docker["create"].call_args.kwargs["env_vars"]
+    assert env["DATABASE_URL"] == "postgresql://fresh"
+    assert env["NODE_ENV"] == "production", "prior env must be preserved"
+
+
+def test_configure_database_passes_engine_version_and_name_to_the_manager(
+    store, deployed, fake_docker, mocker
+):
+    from launchbox import deploy as deploy_module
+    from launchbox.deploy import configure_database
+
+    manager = mocker.patch.object(deploy_module, "DatabaseManager")
+    manager.return_value.create_database_for_app.return_value = {}
+
+    configure_database("myapp", "mysql", version="8", db_name="custom_db",
+                       store=store)
+
+    passed_config = manager.return_value.create_database_for_app.call_args.kwargs[
+        "config"
+    ]
+    db_config = passed_config.get_database_config()
+    assert db_config["type"] == "mysql"
+    assert db_config["version"] == "8"
+    assert db_config["name"] == "custom_db"
+
+
+def test_configure_database_defaults_version_and_name(store, deployed,
+                                                       fake_docker, mocker):
+    from launchbox import deploy as deploy_module
+    from launchbox.deploy import configure_database
+
+    manager = mocker.patch.object(deploy_module, "DatabaseManager")
+    manager.return_value.create_database_for_app.return_value = {}
+
+    configure_database("myapp", "postgresql", store=store)
+
+    db_config = manager.return_value.create_database_for_app.call_args.kwargs[
+        "config"
+    ].get_database_config()
+    assert db_config["version"] == "13"
+    assert db_config["name"] == "myapp_db"
+
+
+def test_configure_database_never_rebuilds(store, deployed, fake_docker,
+                                           mocker):
+    from launchbox import deploy as deploy_module
+    from launchbox.deploy import configure_database
+
+    mocker.patch.object(deploy_module, "DatabaseManager")
+
+    configure_database("myapp", "postgresql", store=store)
+
+    fake_docker["build"].assert_not_called()
+
+
+def test_configure_database_rejects_an_unsupported_engine(store, deployed,
+                                                           fake_docker):
+    from launchbox.deploy import configure_database
+
+    with pytest.raises(ValueError, match="oracle"):
+        configure_database("myapp", "oracle", store=store)
+
+    fake_docker["create"].assert_not_called()
+
+
+def test_configure_database_failed_probe_leaves_current_version_running(
+    store, deployed, fake_docker, mocker
+):
+    from launchbox import deploy as deploy_module
+    from launchbox.deploy import configure_database
+
+    mocker.patch.object(deploy_module, "DatabaseManager")
+    fake_docker["health"].return_value = False
+
+    with pytest.raises(DeploymentError, match="health"):
+        configure_database("myapp", "postgresql", store=store)
+
+    removed = [c.args[0] for c in fake_docker["remove"].call_args_list]
+    assert "myapp-abc1234" not in removed
+    fake_docker["write_route"].assert_not_called()
+    assert store.current_container("myapp") == "myapp-abc1234"
+
+
+def test_configure_database_refuses_when_there_is_no_current_deployment(
+    store, fake_docker
+):
+    from launchbox.deploy import configure_database
+
+    with pytest.raises(DeploymentError, match="no current deployment"):
+        configure_database("myapp", "postgresql", store=store)
+
+
+def test_configure_database_rejects_an_invalid_app_name(store, fake_docker):
+    from launchbox.deploy import configure_database
+
+    with pytest.raises(ValueError):
+        configure_database("../etc", "postgresql", store=store)
+
+
+# --------------------------------------------------------------- detach_database
+
+
+def test_detach_database_stops_injecting_credentials(store, fake_docker,
+                                                      mocker):
+    from launchbox import deploy as deploy_module
+    from launchbox.deploy import detach_database
+
+    db_config = json.loads(json.dumps(RECORDED_CONFIG))
+    db_config["database"] = {"enabled": True, "type": "postgresql",
+                             "version": "13", "name": "myapp_db"}
+    record_deployment(
+        store, "abc1234", config=db_config,
+        env={"NODE_ENV": "production", "DATABASE_URL": "postgresql://live"},
+        image_id="sha256:deadbeef",
+    )
+
+    manager = mocker.patch.object(deploy_module, "DatabaseManager")
+
+    detach_database("myapp", store=store)
+
+    manager.assert_not_called(), "a disabled database must not be re-provisioned"
+    env = fake_docker["create"].call_args.kwargs["env_vars"]
+    assert "DATABASE_URL" not in env, (
+        "stale database env must not survive detachment"
+    )
+    assert env["NODE_ENV"] == "production"
+
+
+def test_detach_database_forgets_the_state_store_association(
+    store, fake_docker, mocker
+):
+    """Without this, the dashboard kept showing a stale 'Detach' panel for a
+    database that had already been detached.
+    """
+    from launchbox import deploy as deploy_module
+    from launchbox.deploy import detach_database
+
+    db_config = json.loads(json.dumps(RECORDED_CONFIG))
+    db_config["database"]["enabled"] = True
+    record_deployment(store, "abc1234", config=db_config, env={},
+                      image_id="sha256:deadbeef")
+    store.record_database("myapp", "postgresql", "myapp_postgres", "",
+                          "myapp_db", "launchbox", "launchbox123")
+    mocker.patch.object(deploy_module, "DatabaseManager")
+
+    assert store.get_database("myapp") is not None
+
+    detach_database("myapp", store=store)
+
+    assert store.get_database("myapp") is None
+
+
+def test_detach_database_keeps_the_state_row_when_the_probe_fails(
+    store, fake_docker, mocker
+):
+    """The association must survive a failed detach exactly like the
+    running container does -- nothing should be forgotten from a change
+    that did not actually take effect.
+    """
+    from launchbox import deploy as deploy_module
+    from launchbox.deploy import detach_database
+
+    db_config = json.loads(json.dumps(RECORDED_CONFIG))
+    db_config["database"]["enabled"] = True
+    record_deployment(store, "abc1234", config=db_config, env={},
+                      image_id="sha256:deadbeef")
+    store.record_database("myapp", "postgresql", "myapp_postgres", "",
+                          "myapp_db", "launchbox", "launchbox123")
+    mocker.patch.object(deploy_module, "DatabaseManager")
+    fake_docker["health"].return_value = False
+
+    with pytest.raises(DeploymentError):
+        detach_database("myapp", store=store)
+
+    assert store.get_database("myapp") is not None
+
+
+def test_detach_database_never_rebuilds(store, fake_docker, mocker):
+    from launchbox import deploy as deploy_module
+    from launchbox.deploy import detach_database
+
+    db_config = json.loads(json.dumps(RECORDED_CONFIG))
+    db_config["database"]["enabled"] = True
+    record_deployment(store, "abc1234", config=db_config, env={},
+                      image_id="sha256:deadbeef")
+    mocker.patch.object(deploy_module, "DatabaseManager")
+
+    detach_database("myapp", store=store)
+
+    fake_docker["build"].assert_not_called()
+
+
+def test_detach_database_failed_probe_leaves_current_version_running(
+    store, fake_docker, mocker
+):
+    from launchbox import deploy as deploy_module
+    from launchbox.deploy import detach_database
+
+    db_config = json.loads(json.dumps(RECORDED_CONFIG))
+    db_config["database"]["enabled"] = True
+    record_deployment(store, "abc1234", config=db_config, env={},
+                      image_id="sha256:deadbeef")
+    mocker.patch.object(deploy_module, "DatabaseManager")
+    fake_docker["health"].return_value = False
+
+    with pytest.raises(DeploymentError, match="health"):
+        detach_database("myapp", store=store)
+
+    assert store.current_container("myapp") == "myapp-abc1234"
+    fake_docker["write_route"].assert_not_called()
+
+
+def test_detach_database_refuses_when_there_is_no_current_deployment(
+    store, fake_docker
+):
+    from launchbox.deploy import detach_database
+
+    with pytest.raises(DeploymentError, match="no current deployment"):
+        detach_database("myapp", store=store)
+
+
+# ----------------------------------------------------- rollback stays unaffected
+
+
+def test_rollback_still_replays_database_env_correctly_after_the_fix(
+    store, fake_docker, mocker
+):
+    """Guard against the _replayed_environment change (stripping reserved
+    keys before merging) silently breaking plain rollback.
+    """
+    from launchbox import deploy as deploy_module
+    from launchbox.deploy import rollback
+
+    db_config = json.loads(json.dumps(RECORDED_CONFIG))
+    db_config["database"]["enabled"] = True
+    record_deployment(
+        store, "1111111", config=db_config,
+        env={"NODE_ENV": "production", "DATABASE_URL": "postgresql://stale"},
+    )
+    record_deployment(store, "2222222", config=RECORDED_CONFIG, env={})
+
+    manager = mocker.patch.object(deploy_module, "DatabaseManager")
+    manager.return_value.create_database_for_app.return_value = {
+        "DATABASE_URL": "postgresql://fresh"
+    }
+
+    rollback("myapp", store=store)
+
+    env = fake_docker["create"].call_args.kwargs["env_vars"]
+    assert env["DATABASE_URL"] == "postgresql://fresh"
+    assert env["NODE_ENV"] == "production"
+
+
+# ---------------------------------------------------------------- db CLI
+
+
+def test_cli_db_provisions_with_engine(mocker):
+    from launchbox import __main__ as cli
+
+    cfg = mocker.patch.object(cli, "configure_database",
+                              return_value="myapp-abc1234")
+
+    exit_code = cli.main(["db", "myapp", "--engine", "postgresql",
+                          "--version", "13", "--name", "mydb"])
+
+    assert exit_code == 0
+    cfg.assert_called_once_with("myapp", "postgresql", version="13",
+                                db_name="mydb")
+
+
+def test_cli_db_provisions_with_defaults(mocker):
+    from launchbox import __main__ as cli
+
+    cfg = mocker.patch.object(cli, "configure_database",
+                              return_value="myapp-abc1234")
+
+    cli.main(["db", "myapp", "--engine", "mysql"])
+
+    cfg.assert_called_once_with("myapp", "mysql", version=None, db_name=None)
+
+
+def test_cli_db_detach(mocker):
+    from launchbox import __main__ as cli
+
+    detach = mocker.patch.object(cli, "detach_database",
+                                 return_value="myapp-abc1234")
+
+    exit_code = cli.main(["db", "myapp", "--detach"])
+
+    assert exit_code == 0
+    detach.assert_called_once_with("myapp")
+
+
+def test_cli_db_requires_engine_or_detach(mocker):
+    from launchbox import __main__ as cli
+
+    cfg = mocker.patch.object(cli, "configure_database")
+    detach = mocker.patch.object(cli, "detach_database")
+
+    with pytest.raises(SystemExit):
+        cli.main(["db", "myapp"])
+
+    cfg.assert_not_called()
+    detach.assert_not_called()
+
+
+def test_cli_db_rejects_engine_and_detach_together(mocker):
+    from launchbox import __main__ as cli
+
+    with pytest.raises(SystemExit):
+        cli.main(["db", "myapp", "--engine", "postgresql", "--detach"])
+
+
+def test_cli_db_rejects_an_unsupported_engine_at_parse_time():
+    from launchbox import __main__ as cli
+
+    with pytest.raises(SystemExit):
+        cli.main(["db", "myapp", "--engine", "oracle"])
+
+
+def test_cli_db_reports_a_failed_health_probe(mocker):
+    from launchbox import __main__ as cli
+
+    mocker.patch.object(cli, "configure_database",
+                        side_effect=DeploymentError("health probe failed"))
+
+    assert cli.main(["db", "myapp", "--engine", "postgresql"]) == 1
+
+
+def test_cli_db_reports_an_invalid_app_name_cleanly(mocker):
+    from launchbox import __main__ as cli
+
+    mocker.patch.object(cli, "configure_database",
+                        side_effect=ValueError("Invalid application name"))
+
+    assert cli.main(["db", "bad name!", "--engine", "postgresql"]) == 1
+
+
+# ================================================================
+# Deployment kind — the activity feed needs to explain itself
+# ================================================================
+
+
+def test_configure_database_stamps_kind_database(store, deployed,
+                                                  fake_docker, mocker):
+    from launchbox import deploy as deploy_module
+    from launchbox.deploy import configure_database
+
+    mocker.patch.object(deploy_module, "DatabaseManager")
+
+    configure_database("myapp", "postgresql", store=store)
+
+    assert store.list_deployments("myapp")[0]["kind"] == "database"
+
+
+def test_detach_database_stamps_kind_database(store, fake_docker, mocker):
+    from launchbox import deploy as deploy_module
+    from launchbox.deploy import detach_database
+
+    db_config = json.loads(json.dumps(RECORDED_CONFIG))
+    db_config["database"]["enabled"] = True
+    record_deployment(store, "abc1234", config=db_config, env={},
+                      image_id="sha256:deadbeef")
+    mocker.patch.object(deploy_module, "DatabaseManager")
+
+    detach_database("myapp", store=store)
+
+    assert store.list_deployments("myapp")[0]["kind"] == "database"
+
+
+def test_update_env_stamps_kind_env(store, deployed, fake_docker):
+    from launchbox.deploy import update_env
+
+    update_env("myapp", set_vars={"DEBUG": "true"}, store=store)
+
+    assert store.list_deployments("myapp")[0]["kind"] == "env"
+
+
+def test_rollback_stamps_kind_rollback(store, fake_docker):
+    from launchbox.deploy import rollback
+
+    record_deployment(store, "1111111", config=RECORDED_CONFIG, env={})
+    record_deployment(store, "2222222", config=RECORDED_CONFIG, env={})
+
+    rollback("myapp", store=store)
+
+    assert store.list_deployments("myapp")[0]["kind"] == "rollback"

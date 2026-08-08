@@ -758,13 +758,44 @@ def test_detail_page_shows_the_database_panel(client, fake_client, deployed,
     assert "s3cret" not in body, "the database password must never reach the browser"
 
 
-def test_detail_page_has_no_database_panel_when_none_is_provisioned(
+def test_detail_page_offers_provisioning_when_no_database_exists(
     client, fake_client, dashboard_state
 ):
+    """No database is provisioned, but the app has a current deployment, so
+    the dashboard should offer to add one rather than show a populated panel.
+
+    The `deployed` fixture only sets config_json (not env_json), unlike a
+    real deploy() -- which always calls record_config with both. Set
+    env_json explicitly so this exercises the realistic case.
+    """
+    dashboard_state._conn.execute(
+        "UPDATE deployments SET env_json = ? WHERE app_name = ?",
+        (json.dumps({}), "myapp"),
+    )
+    dashboard_state._conn.commit()
+
     response = client.get('/app/myapp')
     body = response.get_data(as_text=True)
 
-    assert "Database" not in body or "postgres" not in body.lower()
+    assert "No database provisioned" in body
+    assert 'id="db-provision-btn"' in body
+    assert 'id="db-detach-btn"' not in body, (
+        "there is nothing to detach when no database exists"
+    )
+
+
+def test_detail_page_env_editor_absent_when_a_real_deploy_never_ran(
+    client, fake_client, deployed
+):
+    """A deployment row lacking env_json (this fixture's default shape)
+    correctly disables both the env editor and the database form, rather
+    than silently showing an empty editor for data that was never resolved.
+    """
+    response = client.get('/app/myapp')
+    body = response.get_data(as_text=True)
+
+    assert 'id="env-save-btn"' not in body
+    assert 'id="db-provision-btn"' not in body
 
 
 # -------------------------------------------------------------- recent activity
@@ -888,3 +919,391 @@ def test_detail_page_env_editor_disabled_when_never_deployed(client):
     assert response.status_code == 200
     body = response.get_data(as_text=True)
     assert 'at least once' in body
+
+
+# --------------------------------------------------------- database endpoints
+
+
+def test_configure_database_endpoint_delegates_to_configure_database(
+    client, mocker
+):
+    from launchbox import dashboard as dashboard_module
+
+    cfg = mocker.patch.object(dashboard_module, "configure_database",
+                              return_value="myapp-abc1234")
+
+    response = client.post('/api/apps/myapp/database',
+                           json={"engine": "postgresql", "version": "13",
+                                "name": "mydb"})
+
+    assert response.status_code == 201
+    cfg.assert_called_once_with("myapp", "postgresql", version="13",
+                                db_name="mydb")
+
+
+def test_configure_database_endpoint_requires_an_engine(client, mocker):
+    from launchbox import dashboard as dashboard_module
+
+    cfg = mocker.patch.object(dashboard_module, "configure_database")
+
+    response = client.post('/api/apps/myapp/database', json={})
+
+    assert response.status_code == 400
+    cfg.assert_not_called()
+
+
+def test_configure_database_endpoint_rejects_an_unsupported_engine(
+    client, mocker
+):
+    from launchbox import dashboard as dashboard_module
+
+    mocker.patch.object(dashboard_module, "configure_database",
+                        side_effect=ValueError("Unsupported database engine"))
+
+    response = client.post('/api/apps/myapp/database',
+                           json={"engine": "oracle"})
+
+    assert response.status_code == 400
+
+
+def test_configure_database_endpoint_reports_a_failed_health_probe(
+    client, mocker
+):
+    from launchbox import dashboard as dashboard_module
+    from launchbox.logger import DeploymentError
+
+    mocker.patch.object(dashboard_module, "configure_database",
+                        side_effect=DeploymentError("health probe failed"))
+
+    response = client.post('/api/apps/myapp/database',
+                           json={"engine": "postgresql"})
+
+    assert response.status_code == 500
+
+
+def test_detach_database_endpoint_delegates_to_detach_database(client, mocker):
+    from launchbox import dashboard as dashboard_module
+
+    detach = mocker.patch.object(dashboard_module, "detach_database",
+                                 return_value="myapp-abc1234")
+
+    response = client.delete('/api/apps/myapp/database')
+
+    assert response.status_code == 200
+    detach.assert_called_once_with("myapp")
+
+
+def test_detach_database_endpoint_rejects_an_invalid_app_name(client, mocker):
+    from launchbox import dashboard as dashboard_module
+
+    mocker.patch.object(dashboard_module, "detach_database",
+                        side_effect=ValueError("Invalid application name"))
+
+    response = client.delete('/api/apps/bad name!/database')
+
+    assert response.status_code == 400
+
+
+# --------------------------------------------------- database visibility fix
+
+
+def test_detail_page_shows_the_injected_env_var_names(client, fake_client,
+                                                       deployed, mocker):
+    """DATABASE_URL/DB_HOST/etc were filtered out of the env editor and
+    never listed anywhere else either -- the panel now names them.
+    """
+    from launchbox import dashboard as dashboard_module
+
+    deployed._conn.execute(
+        "UPDATE deployments SET env_json = ? WHERE app_name = ?",
+        (json.dumps({"NODE_ENV": "production",
+                    "DATABASE_URL": "postgresql://x", "DB_HOST": "h"}),
+         "myapp"),
+    )
+    deployed._conn.commit()
+    deployed.record_database("myapp", "postgresql", "myapp_postgres", "",
+                             "myapp_db", "launchbox", "launchbox123")
+    mocker.patch.object(dashboard_module, "StateStore",
+                        lambda *a, **k: StateStore(deployed.db_path))
+
+    response = client.get('/app/myapp')
+    body = response.get_data(as_text=True)
+
+    assert "DATABASE_URL" in body
+    assert "DB_HOST" in body
+    assert "launchbox123" not in body, "the real password must never render"
+
+
+def test_detail_page_shows_a_redacted_connection_string(client, fake_client,
+                                                         deployed, mocker):
+    from launchbox import dashboard as dashboard_module
+
+    deployed.record_database("myapp", "postgresql", "myapp_postgres", "",
+                             "myapp_db", "launchbox", "s3cret-password")
+    mocker.patch.object(dashboard_module, "StateStore",
+                        lambda *a, **k: StateStore(deployed.db_path))
+
+    response = client.get('/app/myapp')
+    body = response.get_data(as_text=True)
+
+    assert "postgresql://launchbox:***@myapp_postgres:5432/myapp_db" in body
+    assert "s3cret-password" not in body
+
+
+def test_env_editor_note_only_lists_keys_actually_present(client, fake_client,
+                                                           deployed, mocker):
+    """An app with a database provisioned but HTTPS/etc not wired into its
+    env should not claim keys it was never actually given.
+    """
+    from launchbox import dashboard as dashboard_module
+
+    deployed._conn.execute(
+        "UPDATE deployments SET env_json = ? WHERE app_name = ?",
+        (json.dumps({"NODE_ENV": "production"}), "myapp"),
+    )
+    deployed._conn.commit()
+    deployed.record_database("myapp", "postgresql", "myapp_postgres", "",
+                             "myapp_db", "launchbox", "launchbox123")
+    mocker.patch.object(dashboard_module, "StateStore",
+                        lambda *a, **k: StateStore(deployed.db_path))
+
+    response = client.get('/app/myapp')
+    body = response.get_data(as_text=True)
+
+    assert "Also set, not editable here" not in body, (
+        "no reserved keys were actually injected for this app"
+    )
+
+
+# ------------------------------------------------- database credentials reveal
+
+
+def test_credentials_endpoint_returns_the_real_password(client, deployed,
+                                                         mocker):
+    from launchbox import dashboard as dashboard_module
+
+    deployed.record_database("myapp", "postgresql", "myapp_postgres", "",
+                             "myapp_db", "launchbox", "s3cret-password")
+    mocker.patch.object(dashboard_module, "StateStore",
+                        lambda *a, **k: StateStore(deployed.db_path))
+
+    response = client.get('/api/apps/myapp/database/credentials')
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["password"] == "s3cret-password"
+    assert body["username"] == "launchbox"
+
+
+def test_credentials_endpoint_builds_a_usable_connection_url(client, deployed,
+                                                              mocker):
+    from launchbox import dashboard as dashboard_module
+
+    deployed.record_database("myapp", "mysql", "myapp_mysql", "",
+                             "myapp_db", "launchbox", "s3cret-password")
+    mocker.patch.object(dashboard_module, "StateStore",
+                        lambda *a, **k: StateStore(deployed.db_path))
+
+    body = client.get('/api/apps/myapp/database/credentials').get_json()
+
+    assert body["database_url"] == (
+        "mysql://launchbox:s3cret-password@myapp_mysql:3306/myapp_db"
+    )
+
+
+def test_credentials_endpoint_404s_when_no_database_exists(client,
+                                                            dashboard_state):
+    response = client.get('/api/apps/myapp/database/credentials')
+
+    assert response.status_code == 404
+
+
+def test_the_password_is_still_absent_from_the_rendered_page(client,
+                                                              fake_client,
+                                                              deployed,
+                                                              mocker):
+    """Revealing is an explicit action. The password must not be baked into
+    the page source, where it would land in the browser cache and any
+    screenshot of the page.
+    """
+    from launchbox import dashboard as dashboard_module
+
+    deployed.record_database("myapp", "postgresql", "myapp_postgres", "",
+                             "myapp_db", "launchbox", "s3cret-password")
+    mocker.patch.object(dashboard_module, "StateStore",
+                        lambda *a, **k: StateStore(deployed.db_path))
+
+    body = client.get('/app/myapp').get_data(as_text=True)
+
+    assert "s3cret-password" not in body
+    assert "postgresql://launchbox:***@" in body, "the redacted form still renders"
+
+
+# ------------------------------------------- injected variable values on page
+
+
+def test_non_secret_injected_values_render_on_the_page(client, fake_client,
+                                                        deployed, mocker):
+    """Listing only the variable NAMES left the values unreadable -- the
+    host, port, database and user are not secrets and belong on the page.
+    """
+    from launchbox import dashboard as dashboard_module
+
+    deployed._conn.execute(
+        "UPDATE deployments SET env_json = ? WHERE app_name = ?",
+        (json.dumps({
+            "DATABASE_URL": "postgresql://launchbox:s3cret@myapp_postgres:5432/myapp_db",
+            "DB_HOST": "myapp_postgres", "DB_PORT": "5432",
+            "DB_NAME": "myapp_db", "DB_USER": "launchbox",
+            "DB_PASSWORD": "s3cret", "DB_TYPE": "postgresql",
+        }), "myapp"),
+    )
+    deployed._conn.commit()
+    deployed.record_database("myapp", "postgresql", "myapp_postgres", "",
+                             "myapp_db", "launchbox", "s3cret")
+    mocker.patch.object(dashboard_module, "StateStore",
+                        lambda *a, **k: StateStore(deployed.db_path))
+
+    body = client.get('/app/myapp').get_data(as_text=True)
+
+    assert "myapp_postgres" in body
+    assert "5432" in body
+    assert "postgresql" in body
+
+
+def test_secret_injected_values_are_masked_on_the_page(client, fake_client,
+                                                        deployed, mocker):
+    """DB_PASSWORD and DATABASE_URL both carry the password, so neither may
+    render until explicitly revealed.
+    """
+    from launchbox import dashboard as dashboard_module
+
+    deployed._conn.execute(
+        "UPDATE deployments SET env_json = ? WHERE app_name = ?",
+        (json.dumps({
+            "DATABASE_URL": "postgresql://launchbox:s3cret@myapp_postgres:5432/myapp_db",
+            "DB_HOST": "myapp_postgres", "DB_PASSWORD": "s3cret",
+        }), "myapp"),
+    )
+    deployed._conn.commit()
+    deployed.record_database("myapp", "postgresql", "myapp_postgres", "",
+                             "myapp_db", "launchbox", "s3cret")
+    mocker.patch.object(dashboard_module, "StateStore",
+                        lambda *a, **k: StateStore(deployed.db_path))
+
+    body = client.get('/app/myapp').get_data(as_text=True)
+
+    assert "s3cret" not in body
+
+
+def test_credentials_endpoint_returns_every_injected_variable(client,
+                                                               deployed,
+                                                               mocker):
+    from launchbox import dashboard as dashboard_module
+
+    deployed.record_database("myapp", "postgresql", "myapp_postgres", "",
+                             "myapp_db", "launchbox", "s3cret")
+    mocker.patch.object(dashboard_module, "StateStore",
+                        lambda *a, **k: StateStore(deployed.db_path))
+
+    env = client.get('/api/apps/myapp/database/credentials').get_json()["env"]
+
+    assert set(env) == {
+        "DATABASE_URL", "DB_HOST", "DB_PORT", "DB_NAME", "DB_USER",
+        "DB_PASSWORD", "DB_TYPE",
+    }
+    assert env["DB_PASSWORD"] == "s3cret"
+    assert env["DB_PORT"] == "5432"
+    assert env["DB_TYPE"] == "postgresql"
+
+
+# ------------------------------------------------------------- UI structure
+
+
+def test_detail_page_renders_all_four_tabs(client, fake_client,
+                                            dashboard_state):
+    """The detail page was one long scroll of stacked cards; every
+    comparable tool sections a service page instead.
+    """
+    body = client.get('/app/myapp').get_data(as_text=True)
+
+    for tab in ("overview", "environment", "database", "deployments"):
+        assert f'data-tab="{tab}"' in body
+        assert f'data-panel="{tab}"' in body
+
+
+def test_app_list_reports_when_it_was_last_deployed(client, fake_client,
+                                                     dashboard_state):
+    apps = client.get('/api/apps').get_json()
+    myapp = next(a for a in apps if a["name"] == "myapp")
+
+    assert myapp["last_deployed_at"] is not None
+    assert myapp["last_commit"] == "abc1234"
+
+
+def test_app_list_last_deployed_is_none_for_a_never_deployed_app(client,
+                                                                  store,
+                                                                  mocker):
+    from launchbox import dashboard as dashboard_module
+
+    store.register("freshapp")
+    mocker.patch.object(dashboard_module, "StateStore",
+                        lambda *a, **k: StateStore(store.db_path))
+
+    apps = client.get('/api/apps').get_json()
+    fresh = next(a for a in apps if a["name"] == "freshapp")
+
+    assert fresh["last_deployed_at"] is None
+    assert fresh["last_commit"] is None
+
+
+# ------------------------------------------------ deployment kind in the UI
+
+
+def test_homepage_activity_feed_labels_the_kind_of_each_event(client,
+                                                               fake_client,
+                                                               store,
+                                                               mocker):
+    from launchbox import dashboard as dashboard_module
+
+    dep = store.record_start("myapp", "abc1234", kind="rollback")
+    store.record_success(dep, "myapp-abc1234", "launchbox-myapp:abc1234")
+    mocker.patch.object(dashboard_module, "StateStore",
+                        lambda *a, **k: StateStore(store.db_path))
+
+    body = client.get('/').get_data(as_text=True)
+
+    assert "rolled back" in body
+
+
+def test_homepage_activity_feed_labels_a_plain_deploy(client, fake_client,
+                                                       dashboard_state):
+    body = client.get('/').get_data(as_text=True)
+
+    assert "fa-rocket" in body
+    assert "deployed" in body
+
+
+def test_detail_page_history_table_shows_the_kind_column(client, fake_client,
+                                                          store, mocker):
+    from launchbox import dashboard as dashboard_module
+
+    dep = store.record_start("myapp", "abc1234", kind="env")
+    store.record_success(dep, "myapp-abc1234", "launchbox-myapp:abc1234")
+    mocker.patch.object(dashboard_module, "StateStore",
+                        lambda *a, **k: StateStore(store.db_path))
+
+    body = client.get('/app/myapp').get_data(as_text=True)
+
+    assert "Env update" in body
+
+
+def test_detail_page_history_labels_a_legacy_row_predating_kind_as_deploy(
+    client, fake_client, dashboard_state
+):
+    """dashboard_state's fixture row has no kind set -- it must read as a
+    plain Deploy, not blank or an error.
+    """
+    body = client.get('/app/myapp').get_data(as_text=True)
+
+    assert "Deploy" in body
