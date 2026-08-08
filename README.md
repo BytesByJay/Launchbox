@@ -109,6 +109,12 @@ git push launchbox main
 
 → Visit http://myapp.localhost
 
+## Documentation
+
+For the full technical reference — every module, the data model, the health-gated
+deploy sequence, the HTTP API, and known limitations — see
+**[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)**.
+
 ## Table of Contents
 
 - [Features](#features)
