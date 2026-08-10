@@ -1,456 +1,516 @@
 {% extends "base.html" %}
+{% block title %}Dashboard · Launchbox{% endblock %}
 
-{% block title %}Applications · Launchbox{% endblock %}
+{% block head %}
+<style>
+  .app-row:hover .row-actions { opacity: 1; }
+  .row-actions { opacity: 0; transition: opacity .15s; }
+  @media (max-width: 640px) { .row-actions { opacity: 1; } }
+  .stat-card { transition: border-color .15s; }
+  .stat-card:hover { border-color: rgba(139,92,246,.3); }
+</style>
+{% endblock %}
 
 {% block content %}
-{% set running_count = apps|selectattr("status", "equalto", "running")|list|length %}
-{% set unhealthy_count = apps|selectattr("health_status", "equalto", "unhealthy")|list|length + apps|selectattr("marked_failed")|list|length %}
-{% set database_count = apps|selectattr("has_database")|list|length %}
-{% set restarting_count = apps|selectattr("restart_attempts")|list|length %}
+{% set running_count   = apps|selectattr("status","equalto","running")|list|length %}
+{% set unhealthy_count = apps|selectattr("health_status","equalto","unhealthy")|list|length + apps|selectattr("marked_failed")|list|length %}
+{% set database_count  = apps|selectattr("has_database")|list|length %}
+{% set restarting_count= apps|selectattr("restart_attempts")|list|length %}
 
-<div class="flex items-center justify-between gap-4 mb-3 flex-wrap">
-    <div class="flex items-center gap-2.5">
-        <h1 class="text-[13px] font-semibold text-gray-900 dark:text-gray-100 uppercase tracking-wide">Applications</h1>
-        <span id="live-indicator" class="hidden text-[11px] text-gray-400 dark:text-gray-500">
-            <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse mr-1"></span>live
-        </span>
+<!-- ── Header row ─────────────────────────────────────────────────────────── -->
+<div class="flex items-center justify-between mb-6 gap-3 flex-wrap">
+  <div>
+    <h1 class="text-[15px] font-semibold text-gray-900 dark:text-white tracking-tight">Applications</h1>
+    <p class="text-[12px] text-gray-400 dark:text-zinc-500 mt-0.5">
+      {{ apps|length }} registered ·
+      <span id="live-dot" class="hidden">
+        <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 status-dot-pulse mr-0.5"></span>live
+      </span>
+    </p>
+  </div>
+  <div class="flex items-center gap-2">
+    <div class="relative">
+      <i class="fas fa-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px]"></i>
+      <input id="app-search" type="text" placeholder="Filter apps…"
+        class="pl-7 pr-3 py-1.5 text-[12px] bg-gray-100 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.07]
+               rounded-lg w-44 focus:outline-none focus:ring-1 focus:ring-accent-500/40 focus:border-accent-500/60
+               placeholder:text-gray-400 dark:placeholder:text-zinc-600 text-gray-900 dark:text-gray-100" />
     </div>
-    <div class="flex items-center gap-1.5">
-        <div class="relative">
-            <i class="fas fa-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px]"></i>
-            <input id="app-search" type="text" placeholder="Filter…"
-                class="pl-7 pr-2.5 py-1.5 text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded w-44 focus:outline-none focus:ring-1 focus:ring-accent-500/40 focus:border-accent-400 placeholder:text-gray-400 dark:placeholder:text-gray-500 text-gray-900 dark:text-gray-100">
-        </div>
-        <button onclick="location.reload()" title="Refresh"
-            class="w-7 h-7 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors active:scale-95">
-            <i class="fas fa-arrows-rotate text-xs"></i>
-        </button>
-        <button onclick="openNewAppModal()"
-            class="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-accent-600 hover:bg-accent-700 px-2.5 py-1.5 rounded transition-colors active:scale-95">
-            <i class="fas fa-plus text-[10px]"></i> New application
-        </button>
-    </div>
+    <button onclick="location.reload()" title="Refresh"
+      class="w-8 h-8 flex items-center justify-center text-gray-400 dark:text-zinc-500
+             hover:text-gray-700 dark:hover:text-zinc-200 bg-gray-100 dark:bg-white/[0.05]
+             border border-gray-200 dark:border-white/[0.07] rounded-lg hover:bg-gray-200 dark:hover:bg-white/[0.09] transition-colors">
+      <i class="fas fa-arrows-rotate text-[11px]"></i>
+    </button>
+    <button onclick="openNewAppModal()"
+      class="inline-flex items-center gap-1.5 text-[12px] font-semibold text-white
+             bg-accent-600 hover:bg-accent-700 px-3 py-1.5 rounded-lg transition-colors active:scale-[0.98]">
+      <i class="fas fa-plus text-[10px]"></i> New app
+    </button>
+  </div>
 </div>
 
-<div class="flex items-stretch bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-md shadow-card divide-x divide-gray-200 dark:divide-gray-800 mb-4 overflow-hidden overflow-x-auto">
-    <div class="flex-1 min-w-[110px] px-4 py-2">
-        <p class="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">Applications</p>
-        <p class="mt-0.5 text-lg font-semibold tabular-nums tracking-tight text-gray-900 dark:text-gray-100">{{ apps|length }}</p>
-    </div>
-    <div class="flex-1 min-w-[110px] px-4 py-2">
-        <p class="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">Running</p>
-        <p class="mt-0.5 text-lg font-semibold tabular-nums tracking-tight text-emerald-600 dark:text-emerald-400">{{ running_count }}</p>
-    </div>
-    <div class="flex-1 min-w-[110px] px-4 py-2">
-        <p class="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">Unhealthy</p>
-        <p class="mt-0.5 text-lg font-semibold tabular-nums tracking-tight {{ 'text-red-600 dark:text-red-400' if unhealthy_count else 'text-gray-900 dark:text-gray-100' }}">{{ unhealthy_count }}</p>
-    </div>
-    <div class="flex-1 min-w-[110px] px-4 py-2">
-        <p class="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">Restarting</p>
-        <p class="mt-0.5 text-lg font-semibold tabular-nums tracking-tight {{ 'text-amber-600 dark:text-amber-400' if restarting_count else 'text-gray-900 dark:text-gray-100' }}">{{ restarting_count }}</p>
-    </div>
-    <div class="flex-1 min-w-[110px] px-4 py-2">
-        <p class="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">Databases</p>
-        <p class="mt-0.5 text-lg font-semibold tabular-nums tracking-tight text-gray-900 dark:text-gray-100">{{ database_count }}</p>
-    </div>
+<!-- ── Stat cards ─────────────────────────────────────────────────────────── -->
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+  <div class="stat-card rounded-xl border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-[#141414] px-4 py-3">
+    <p class="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-600">Total</p>
+    <p class="mt-1 text-2xl font-bold tabular-nums text-gray-900 dark:text-white">{{ apps|length }}</p>
+  </div>
+  <div class="stat-card rounded-xl border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-[#141414] px-4 py-3">
+    <p class="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-600">Running</p>
+    <p class="mt-1 text-2xl font-bold tabular-nums {{ 'text-emerald-600 dark:text-emerald-400' if running_count else 'text-gray-900 dark:text-white' }}">{{ running_count }}</p>
+  </div>
+  <div class="stat-card rounded-xl border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-[#141414] px-4 py-3">
+    <p class="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-600">Unhealthy</p>
+    <p class="mt-1 text-2xl font-bold tabular-nums {{ 'text-red-600 dark:text-red-400' if unhealthy_count else 'text-gray-900 dark:text-white' }}">{{ unhealthy_count }}</p>
+  </div>
+  <div class="stat-card rounded-xl border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-[#141414] px-4 py-3">
+    <p class="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-600">Databases</p>
+    <p class="mt-1 text-2xl font-bold tabular-nums text-gray-900 dark:text-white">{{ database_count }}</p>
+  </div>
 </div>
 
-<div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-md shadow-card overflow-hidden">
-    <div class="overflow-x-auto">
+<!-- ── App table ──────────────────────────────────────────────────────────── -->
+<div class="rounded-xl border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-[#141414] overflow-hidden mb-6">
+  {% if apps %}
+  <div class="overflow-x-auto">
     <table class="w-full text-[13px] border-collapse">
-        <thead>
-            <tr class="text-left text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500 bg-gray-50/80 dark:bg-gray-900/60 border-b border-gray-200 dark:border-gray-800">
-                <th class="pl-4 pr-1 py-2 w-4"></th>
-                <th class="px-2 py-2">Name</th>
-                <th class="px-2 py-2">Status</th>
-                <th class="px-2 py-2 hidden md:table-cell">URL</th>
-                <th class="px-2 py-2 hidden lg:table-cell">Last deploy</th>
-                <th class="px-2 py-2 hidden lg:table-cell">Commit</th>
-                <th class="px-2 py-2 text-right hidden sm:table-cell">Restarts</th>
-                <th class="pl-2 pr-4 py-2 text-right">Actions</th>
-            </tr>
-        </thead>
-        <tbody id="apps-list" class="divide-y divide-gray-100 dark:divide-gray-800">
-            {% for app in apps %}
-            <tr class="app-row group border-l-2 border-l-transparent hover:border-l-accent-400 dark:hover:border-l-accent-500 hover:bg-gray-50/70 dark:hover:bg-gray-800/40 transition-colors" data-app-name="{{ app.name|lower }}">
-                <td class="pl-4 pr-1 py-1.5">
-                    {% if app.marked_failed or app.health_status == 'unhealthy' %}
-                        <span class="block w-2 h-2 rounded-full bg-red-500" title="Unhealthy"></span>
-                    {% elif app.health_status == 'starting' %}
-                        <span class="block w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Starting"></span>
-                    {% elif app.status == 'running' %}
-                        <span class="block w-2 h-2 rounded-full bg-emerald-500" title="Running"></span>
-                    {% elif app.status == 'exited' %}
-                        <span class="block w-2 h-2 rounded-full bg-gray-400" title="Stopped"></span>
-                    {% else %}
-                        <span class="block w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600" title="Not deployed"></span>
-                    {% endif %}
-                </td>
-                <td class="px-2 py-1.5 min-w-0">
-                    <div class="flex items-center gap-1.5 min-w-0">
-                        <a href="/app/{{ app.name }}" class="font-medium text-gray-900 dark:text-gray-100 hover:text-accent-600 dark:hover:text-accent-400 truncate">{{ app.name }}</a>
-                        {% if not app.has_local_dir %}
-                            <i class="fas fa-code-branch text-[10px] text-accent-500 dark:text-accent-400 shrink-0" title="Deployed via git push"></i>
-                        {% endif %}
-                        {% if not app.has_dockerfile and app.has_local_dir %}
-                            <i class="fas fa-triangle-exclamation text-[10px] text-amber-500 shrink-0" title="No Dockerfile"></i>
-                        {% endif %}
-                        {% if app.has_database %}
-                            <i class="fas fa-database text-[10px] text-gray-400 dark:text-gray-500 shrink-0" title="Has a database"></i>
-                        {% endif %}
-                    </div>
-                </td>
-                <td class="px-2 py-1.5 whitespace-nowrap">
-                    {% if app.marked_failed %}
-                        <span class="text-[11px] font-medium text-red-600 dark:text-red-400">Failed</span>
-                    {% elif app.health_status == 'healthy' %}
-                        <span class="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">Healthy</span>
-                    {% elif app.health_status == 'unhealthy' %}
-                        <span class="text-[11px] font-medium text-red-600 dark:text-red-400">Unhealthy</span>
-                    {% elif app.health_status == 'starting' %}
-                        <span class="text-[11px] font-medium text-amber-600 dark:text-amber-400">Starting</span>
-                    {% elif app.status == 'running' %}
-                        <span class="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">Running</span>
-                    {% elif app.status == 'exited' %}
-                        <span class="text-[11px] font-medium text-gray-500 dark:text-gray-400">Stopped</span>
-                    {% else %}
-                        <span class="text-[11px] font-medium text-gray-400 dark:text-gray-500">Not deployed</span>
-                    {% endif %}
-                </td>
-                <td class="px-2 py-1.5 hidden md:table-cell min-w-0 max-w-[240px]">
-                    {% if app.status == 'running' %}
-                        <a href="{{ app.url }}" target="_blank" class="font-mono text-[12px] text-gray-500 dark:text-gray-400 hover:text-accent-600 dark:hover:text-accent-400 truncate block">{{ app.url }}</a>
-                    {% else %}
-                        <span class="font-mono text-[12px] text-gray-400 dark:text-gray-600 truncate block">{{ app.url }}</span>
-                    {% endif %}
-                </td>
-                <td class="px-2 py-1.5 hidden lg:table-cell whitespace-nowrap text-[12px] text-gray-500 dark:text-gray-400" {% if app.last_deployed_at %}data-relative-time="{{ app.last_deployed_at }}"{% endif %}>{{ app.last_deployed_at or '—' }}</td>
-                <td class="px-2 py-1.5 hidden lg:table-cell font-mono text-[12px] text-gray-500 dark:text-gray-400">{{ app.last_commit[:7] if app.last_commit else '—' }}</td>
-                <td class="px-2 py-1.5 text-right hidden sm:table-cell tabular-nums text-[12px] {{ 'text-amber-600 dark:text-amber-400 font-medium' if app.restart_attempts else 'text-gray-300 dark:text-gray-600' }}">{{ app.restart_attempts or '—' }}</td>
-                <td class="pl-2 pr-4 py-1.5">
-                    <div class="flex items-center justify-end gap-0.5">
-                        {% if app.status == 'running' %}
-                            <a href="{{ app.url }}" target="_blank" title="Open"
-                                class="w-6 h-6 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-accent-600 dark:hover:text-accent-400 hover:bg-accent-50 dark:hover:bg-accent-950/40 rounded transition-colors">
-                                <i class="fas fa-arrow-up-right-from-square text-[11px]"></i>
-                            </a>
-                            <button onclick="stopApp('{{ app.name }}', this)" data-loading-label="" title="Stop"
-                                class="w-6 h-6 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded transition-colors">
-                                <i class="fas fa-stop text-[11px]"></i>
-                            </button>
-                        {% elif app.status == 'exited' %}
-                            <button onclick="startApp('{{ app.name }}', this)" data-loading-label="" title="Start"
-                                class="w-6 h-6 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded transition-colors">
-                                <i class="fas fa-play text-[11px]"></i>
-                            </button>
-                        {% elif app.has_dockerfile %}
-                            <button onclick="deployApp('{{ app.name }}', this)" data-loading-label="Deploying"
-                                class="inline-flex items-center gap-1 text-[11px] font-medium text-white bg-accent-600 hover:bg-accent-700 px-2 py-1 rounded transition-colors active:scale-95">
-                                <i class="fas fa-rocket text-[10px]"></i> Deploy
-                            </button>
-                        {% elif not app.has_local_dir %}
-                            <span class="text-[11px] text-gray-400 dark:text-gray-500 italic pr-1">awaiting push</span>
-                        {% endif %}
+      <thead>
+        <tr class="border-b border-gray-100 dark:border-white/[0.05] text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-zinc-600">
+          <th class="pl-5 pr-2 py-2.5 w-6"></th>
+          <th class="px-3 py-2.5 text-left">Name</th>
+          <th class="px-3 py-2.5 text-left">Status</th>
+          <th class="px-3 py-2.5 text-left hidden md:table-cell">URL</th>
+          <th class="px-3 py-2.5 text-left hidden lg:table-cell">Last deploy</th>
+          <th class="px-3 py-2.5 text-left hidden lg:table-cell">Commit</th>
+          <th class="px-3 py-2.5 text-right hidden sm:table-cell">Restarts</th>
+          <th class="pl-3 pr-5 py-2.5 text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100 dark:divide-white/[0.04]">
+        {% for app in apps %}
+        <tr class="app-row group hover:bg-gray-50 dark:hover:bg-white/[0.025] transition-colors" data-app-name="{{ app.name|lower }}">
+          <!-- Status dot -->
+          <td class="pl-5 pr-2 py-3">
+            {% if app.marked_failed or app.health_status == 'unhealthy' %}
+              <span class="block w-2 h-2 rounded-full bg-red-500" title="Unhealthy/Failed"></span>
+            {% elif app.health_status == 'starting' %}
+              <span class="block w-2 h-2 rounded-full bg-amber-400 status-dot-pulse" title="Starting"></span>
+            {% elif app.status == 'running' %}
+              <span class="block w-2 h-2 rounded-full bg-emerald-500" title="Running"></span>
+            {% elif app.status == 'exited' %}
+              <span class="block w-2 h-2 rounded-full bg-zinc-500" title="Stopped"></span>
+            {% else %}
+              <span class="block w-2 h-2 rounded-full bg-zinc-700 dark:bg-zinc-700" title="Not deployed"></span>
+            {% endif %}
+          </td>
 
-                        {% if app.status != 'not deployed' %}
-                            <button onclick="showLogs('{{ app.name }}')" title="Logs"
-                                class="w-6 h-6 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors">
-                                <i class="fas fa-terminal text-[11px]"></i>
-                            </button>
-                        {% endif %}
+          <!-- Name -->
+          <td class="px-3 py-3">
+            <div class="flex items-center gap-1.5">
+              <a href="/app/{{ app.name }}"
+                class="font-semibold text-gray-900 dark:text-gray-100 hover:text-accent-600 dark:hover:text-accent-400 transition-colors">
+                {{ app.name }}
+              </a>
+              {% if not app.has_local_dir %}
+                <i class="fas fa-code-branch text-[9px] text-accent-500 dark:text-accent-400" title="git push"></i>
+              {% endif %}
+              {% if not app.has_dockerfile and app.has_local_dir %}
+                <i class="fas fa-triangle-exclamation text-[9px] text-amber-500" title="No Dockerfile"></i>
+              {% endif %}
+              {% if app.has_database %}
+                <i class="fas fa-database text-[9px] text-zinc-500" title="Has database"></i>
+              {% endif %}
+            </div>
+          </td>
 
-                        <a href="/app/{{ app.name }}" title="Details"
-                            class="w-6 h-6 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors">
-                            <i class="fas fa-chevron-right text-[11px]"></i>
-                        </a>
-                    </div>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
+          <!-- Status text -->
+          <td class="px-3 py-3 whitespace-nowrap">
+            {% if app.marked_failed %}
+              <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-600 dark:text-red-400">
+                <span class="w-1 h-1 rounded-full bg-red-500"></span>Failed
+              </span>
+            {% elif app.health_status == 'healthy' %}
+              <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                <span class="w-1 h-1 rounded-full bg-emerald-500"></span>Healthy
+              </span>
+            {% elif app.health_status == 'unhealthy' %}
+              <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-600 dark:text-red-400">
+                <span class="w-1 h-1 rounded-full bg-red-500"></span>Unhealthy
+              </span>
+            {% elif app.health_status == 'starting' %}
+              <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-500 dark:text-amber-400">
+                <span class="w-1 h-1 rounded-full bg-amber-400 status-dot-pulse"></span>Starting
+              </span>
+            {% elif app.status == 'running' %}
+              <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                <span class="w-1 h-1 rounded-full bg-emerald-500"></span>Running
+              </span>
+            {% elif app.status == 'exited' %}
+              <span class="text-[11px] font-medium text-zinc-500">Stopped</span>
+            {% else %}
+              <span class="text-[11px] font-medium text-zinc-600">Not deployed</span>
+            {% endif %}
+          </td>
+
+          <!-- URL -->
+          <td class="px-3 py-3 hidden md:table-cell max-w-[200px]">
+            {% if app.status == 'running' %}
+              <a href="{{ app.url }}" target="_blank"
+                class="font-mono text-[11px] text-zinc-500 dark:text-zinc-400 hover:text-accent-600 dark:hover:text-accent-400 truncate block transition-colors">
+                {{ app.url }}
+              </a>
+            {% else %}
+              <span class="font-mono text-[11px] text-zinc-600 dark:text-zinc-700 truncate block">{{ app.url }}</span>
+            {% endif %}
+          </td>
+
+          <!-- Last deploy -->
+          <td class="px-3 py-3 hidden lg:table-cell whitespace-nowrap text-[12px] text-zinc-500 dark:text-zinc-500"
+            {% if app.last_deployed_at %}data-relative-time="{{ app.last_deployed_at }}"{% endif %}>
+            {{ app.last_deployed_at or '—' }}
+          </td>
+
+          <!-- Commit -->
+          <td class="px-3 py-3 hidden lg:table-cell font-mono text-[11px] text-zinc-500 dark:text-zinc-500">
+            {{ app.last_commit[:7] if app.last_commit else '—' }}
+          </td>
+
+          <!-- Restarts -->
+          <td class="px-3 py-3 text-right hidden sm:table-cell tabular-nums text-[12px]
+            {{ 'text-amber-500 dark:text-amber-400 font-semibold' if app.restart_attempts else 'text-zinc-700' }}">
+            {{ app.restart_attempts or '—' }}
+          </td>
+
+          <!-- Actions -->
+          <td class="pl-3 pr-5 py-3">
+            <div class="row-actions flex items-center justify-end gap-1">
+              {% if app.status == 'running' %}
+                <a href="{{ app.url }}" target="_blank" title="Open"
+                  class="w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-accent-500 dark:hover:text-accent-400
+                         hover:bg-accent-50 dark:hover:bg-accent-950/30 rounded-lg transition-colors">
+                  <i class="fas fa-arrow-up-right-from-square text-[10px]"></i>
+                </a>
+                <button onclick="stopApp('{{ app.name }}', this)" title="Stop"
+                  class="w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-red-500 dark:hover:text-red-400
+                         hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors">
+                  <i class="fas fa-stop text-[10px]"></i>
+                </button>
+              {% elif app.status == 'exited' %}
+                <button onclick="startApp('{{ app.name }}', this)" title="Start"
+                  class="w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-emerald-500 dark:hover:text-emerald-400
+                         hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg transition-colors">
+                  <i class="fas fa-play text-[10px]"></i>
+                </button>
+              {% elif app.has_dockerfile %}
+                <button onclick="deployApp('{{ app.name }}', this)" data-loading-label="Deploying"
+                  class="inline-flex items-center gap-1 text-[11px] font-semibold text-white
+                         bg-accent-600 hover:bg-accent-700 px-2.5 py-1 rounded-lg transition-colors active:scale-[0.97]">
+                  <i class="fas fa-rocket text-[9px]"></i> Deploy
+                </button>
+              {% elif not app.has_local_dir %}
+                <span class="text-[11px] text-zinc-600 italic pr-1">awaiting push</span>
+              {% endif %}
+
+              {% if app.status != 'not deployed' %}
+                <button onclick="showLogs('{{ app.name }}')" title="Logs"
+                  class="w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-zinc-200
+                         hover:bg-white/[0.06] rounded-lg transition-colors">
+                  <i class="fas fa-terminal text-[10px]"></i>
+                </button>
+              {% endif %}
+
+              <a href="/app/{{ app.name }}" title="Details"
+                class="w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-zinc-200
+                       hover:bg-white/[0.06] rounded-lg transition-colors">
+                <i class="fas fa-chevron-right text-[10px]"></i>
+              </a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
     </table>
+  </div>
+  {% else %}
+  <div class="px-6 py-20 text-center">
+    <div class="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-white/[0.05] flex items-center justify-center mx-auto mb-4">
+      <i class="fas fa-box-open text-gray-400 dark:text-zinc-600 text-lg"></i>
     </div>
-    {% if not apps %}
-    <div class="px-5 py-16 text-center">
-        <div class="w-10 h-10 rounded bg-gray-100 dark:bg-gray-800 flex items-center justify-center mx-auto mb-3">
-            <i class="fas fa-box-open text-gray-400 dark:text-gray-500"></i>
-        </div>
-        <p class="text-sm font-medium text-gray-700 dark:text-gray-200">No applications yet</p>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Register one to get started:</p>
-        <button onclick="openNewAppModal()" class="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-white bg-accent-600 hover:bg-accent-700 px-3 py-1.5 rounded transition-colors">
-            <i class="fas fa-plus text-[10px]"></i> New application
-        </button>
-    </div>
-    {% endif %}
+    <p class="text-sm font-semibold text-gray-700 dark:text-zinc-300">No applications yet</p>
+    <p class="text-xs text-gray-400 dark:text-zinc-600 mt-1 mb-4">Register one to start deploying</p>
+    <button onclick="openNewAppModal()"
+      class="inline-flex items-center gap-1.5 text-xs font-semibold text-white
+             bg-accent-600 hover:bg-accent-700 px-4 py-2 rounded-lg transition-colors">
+      <i class="fas fa-plus text-[10px]"></i> New application
+    </button>
+  </div>
+  {% endif %}
 </div>
 
-<p id="no-results" class="hidden text-center text-xs text-gray-400 dark:text-gray-500 mt-4">No applications match your filter.</p>
+<p id="no-results" class="hidden text-center text-xs text-zinc-600 mt-4">No applications match your filter.</p>
 
+<!-- ── Recent activity ─────────────────────────────────────────────────────── -->
 {% if recent_activity %}
-<div class="mt-5">
-    <h2 class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Recent activity</h2>
-    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-md shadow-card overflow-hidden">
-        <div class="overflow-x-auto">
-        <table class="w-full text-[13px] border-collapse">
-            <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-                {% for dep in recent_activity %}
-                <tr class="border-l-2 border-l-transparent hover:border-l-accent-400 dark:hover:border-l-accent-500 hover:bg-gray-50/70 dark:hover:bg-gray-800/40 transition-colors">
-                    <td class="pl-4 pr-1 py-1.5 w-4">
-                        {% if dep.status == 'success' %}
-                            <i class="fas fa-circle-check text-emerald-500 text-[10px]"></i>
-                        {% elif dep.status == 'failed' %}
-                            <i class="fas fa-circle-xmark text-red-500 text-[10px]"></i>
-                        {% else %}
-                            <i class="fas fa-spinner text-amber-500 text-[10px]"></i>
-                        {% endif %}
-                    </td>
-                    <td class="px-2 py-1.5 whitespace-nowrap">
-                        <a href="/app/{{ dep.app_name }}" class="font-medium text-gray-900 dark:text-gray-100 hover:text-accent-600 dark:hover:text-accent-400">{{ dep.app_name }}</a>
-                    </td>
-                    <td class="px-2 py-1.5 whitespace-nowrap text-[11px] font-medium text-gray-500 dark:text-gray-400">
-                        {% if dep.kind == 'rollback' %}<i class="fas fa-clock-rotate-left text-[9px] mr-1"></i>rolled back
-                        {% elif dep.kind == 'env' %}<i class="fas fa-sliders text-[9px] mr-1"></i>env updated
-                        {% elif dep.kind == 'database' %}<i class="fas fa-database text-[9px] mr-1"></i>database
-                        {% else %}<i class="fas fa-rocket text-[9px] mr-1"></i>deployed
-                        {% endif %}
-                    </td>
-                    <td class="px-2 py-1.5 font-mono text-[12px] text-gray-400 dark:text-gray-500 whitespace-nowrap">{{ (dep.commit_sha or 'latest')[:9] }}</td>
-                    <td class="px-2 py-1.5 text-[12px] text-red-500 dark:text-red-400 truncate max-w-xs" title="{{ dep.error or '' }}">
-                        {% if dep.status == 'failed' and dep.error %}{{ dep.error }}{% endif %}
-                    </td>
-                    <td class="pl-2 pr-4 py-1.5 text-right text-[12px] text-gray-400 dark:text-gray-500 whitespace-nowrap" data-relative-time="{{ dep.started_at }}">{{ dep.started_at }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        </div>
-    </div>
+<div>
+  <h2 class="text-[11px] font-semibold uppercase tracking-widest text-zinc-500 dark:text-zinc-600 mb-3">Recent activity</h2>
+  <div class="rounded-xl border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-[#141414] overflow-hidden">
+    <table class="w-full text-[12px] border-collapse">
+      <tbody class="divide-y divide-gray-100 dark:divide-white/[0.04]">
+        {% for dep in recent_activity %}
+        <tr class="hover:bg-gray-50 dark:hover:bg-white/[0.025] transition-colors">
+          <td class="pl-5 pr-3 py-2.5 w-5">
+            {% if dep.status == 'success' %}
+              <i class="fas fa-circle-check text-emerald-500 text-[10px]"></i>
+            {% elif dep.status == 'failed' %}
+              <i class="fas fa-circle-xmark text-red-500 text-[10px]"></i>
+            {% else %}
+              <i class="fas fa-spinner text-amber-400 text-[10px]"></i>
+            {% endif %}
+          </td>
+          <td class="px-3 py-2.5 whitespace-nowrap font-semibold text-gray-900 dark:text-gray-100">
+            <a href="/app/{{ dep.app_name }}" class="hover:text-accent-500 dark:hover:text-accent-400 transition-colors">{{ dep.app_name }}</a>
+          </td>
+          <td class="px-3 py-2.5 whitespace-nowrap text-zinc-500">
+            {% if dep.kind == 'rollback' %}<i class="fas fa-clock-rotate-left text-[9px] mr-1"></i>rolled back
+            {% elif dep.kind == 'env' %}<i class="fas fa-sliders text-[9px] mr-1"></i>env updated
+            {% elif dep.kind == 'database' %}<i class="fas fa-database text-[9px] mr-1"></i>database
+            {% else %}<i class="fas fa-rocket text-[9px] mr-1"></i>deployed
+            {% endif %}
+          </td>
+          <td class="px-3 py-2.5 font-mono text-zinc-600">{{ (dep.commit_sha or 'latest')[:9] }}</td>
+          <td class="px-3 py-2.5 text-red-400 truncate max-w-xs" title="{{ dep.error or '' }}">
+            {% if dep.status == 'failed' and dep.error %}{{ dep.error }}{% endif %}
+          </td>
+          <td class="pl-3 pr-5 py-2.5 text-right text-zinc-600 whitespace-nowrap"
+            data-relative-time="{{ dep.started_at }}">{{ dep.started_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endif %}
 
-<!-- Logs Modal -->
-<div id="logsModal" class="modal-backdrop fixed inset-0 bg-gray-900/40 backdrop-blur-sm hidden items-center justify-center p-4 opacity-0 transition-opacity duration-150" style="z-index: 1000;">
-    <div class="modal-panel bg-white dark:bg-gray-900 rounded-lg shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col scale-95 transition-transform duration-150">
-        <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
-            <h3 class="text-xs font-semibold text-gray-900 dark:text-gray-100" id="logsTitle">Logs</h3>
-            <div class="flex items-center gap-1">
-                <button onclick="refreshLogs()" title="Refresh" class="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
-                    <i class="fas fa-arrows-rotate text-[11px]"></i>
-                </button>
-                <button onclick="closeLogs()" title="Close" class="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
-                    <i class="fas fa-xmark text-xs"></i>
-                </button>
-            </div>
-        </div>
-        <div class="flex-1 overflow-auto bg-gray-950 rounded-b-lg">
-            <pre id="logsContent" class="text-[12px] leading-relaxed text-gray-200 font-mono p-4 whitespace-pre-wrap break-words"></pre>
-        </div>
+<!-- ── Logs Modal ─────────────────────────────────────────────────────────── -->
+<div id="logsModal"
+  class="modal-backdrop fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4 opacity-0 transition-opacity duration-150 z-50">
+  <div class="modal-panel bg-white dark:bg-[#141414] border border-gray-200 dark:border-white/[0.08]
+              rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col scale-95 transition-transform duration-150">
+    <div class="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 dark:border-white/[0.06]">
+      <h3 class="text-[13px] font-semibold text-gray-900 dark:text-gray-100" id="logsTitle">Logs</h3>
+      <div class="flex items-center gap-1">
+        <button onclick="refreshLogs()" title="Refresh"
+          class="w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] rounded-lg transition-colors">
+          <i class="fas fa-arrows-rotate text-[11px]"></i>
+        </button>
+        <button onclick="closeLogs()"
+          class="w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] rounded-lg transition-colors">
+          <i class="fas fa-xmark text-xs"></i>
+        </button>
+      </div>
     </div>
+    <div class="flex-1 overflow-auto bg-[#0a0a0a] rounded-b-2xl">
+      <pre id="logsContent" class="text-[12px] leading-relaxed text-zinc-300 font-mono p-5 whitespace-pre-wrap break-words"></pre>
+    </div>
+  </div>
 </div>
 
-<!-- New Application Modal -->
-<div id="newAppModal" class="modal-backdrop fixed inset-0 bg-gray-900/40 backdrop-blur-sm hidden items-center justify-center p-4 opacity-0 transition-opacity duration-150" style="z-index: 1000;">
-    <div class="modal-panel bg-white dark:bg-gray-900 rounded-lg shadow-2xl w-full max-w-md scale-95 transition-transform duration-150">
-        <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
-            <h3 class="text-xs font-semibold text-gray-900 dark:text-gray-100">New application</h3>
-            <button onclick="closeNewAppModal()" class="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
-                <i class="fas fa-xmark text-xs"></i>
-            </button>
-        </div>
-
-        <div id="newAppForm" class="p-4">
-            <label class="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Application name</label>
-            <input id="new-app-name" type="text" placeholder="my-api"
-                class="w-full px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded focus:outline-none focus:ring-1 focus:ring-accent-500/40 focus:border-accent-400 text-gray-900 dark:text-gray-100 mb-3">
-            <label class="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Default branch</label>
-            <input id="new-app-branch" type="text" value="main"
-                class="w-full px-2.5 py-1.5 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded focus:outline-none focus:ring-1 focus:ring-accent-500/40 focus:border-accent-400 text-gray-900 dark:text-gray-100 mb-4">
-            <button id="register-btn" onclick="registerApp(this)" data-loading-label="Creating"
-                class="w-full inline-flex items-center justify-center gap-1.5 text-sm font-medium text-white bg-accent-600 hover:bg-accent-700 px-3.5 py-2 rounded transition-colors active:scale-[0.98]">
-                <i class="fas fa-plus text-xs"></i> Create
-            </button>
-        </div>
-
-        <div id="newAppResult" class="hidden p-4">
-            <p class="text-sm text-gray-700 dark:text-gray-300 mb-3">
-                <i class="fas fa-circle-check text-emerald-500 mr-1"></i>
-                Registered. Push your app to deploy it:
-            </p>
-            <div class="bg-gray-950 rounded p-3 space-y-1.5" id="push-commands"></div>
-            <button onclick="closeNewAppModal(); location.reload();"
-                class="mt-4 w-full text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 px-3.5 py-2 rounded transition-colors">
-                Done
-            </button>
-        </div>
+<!-- ── New App Modal ──────────────────────────────────────────────────────── -->
+<div id="newAppModal"
+  class="modal-backdrop fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4 opacity-0 transition-opacity duration-150 z-50">
+  <div class="modal-panel bg-white dark:bg-[#141414] border border-gray-200 dark:border-white/[0.08]
+              rounded-2xl shadow-2xl w-full max-w-md scale-95 transition-transform duration-150">
+    <div class="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 dark:border-white/[0.06]">
+      <h3 class="text-[13px] font-semibold text-gray-900 dark:text-gray-100">New application</h3>
+      <button onclick="closeNewAppModal()"
+        class="w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] rounded-lg transition-colors">
+        <i class="fas fa-xmark text-xs"></i>
+      </button>
     </div>
+
+    <div id="newAppForm" class="p-5 space-y-4">
+      <div>
+        <label class="block text-[11px] font-semibold text-zinc-500 uppercase tracking-wider mb-1.5">Application name</label>
+        <input id="new-app-name" type="text" placeholder="my-api"
+          class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08]
+                 rounded-lg focus:outline-none focus:ring-1 focus:ring-accent-500/50 focus:border-accent-500/60
+                 text-gray-900 dark:text-gray-100 placeholder:text-zinc-500" />
+      </div>
+      <div>
+        <label class="block text-[11px] font-semibold text-zinc-500 uppercase tracking-wider mb-1.5">Default branch</label>
+        <input id="new-app-branch" type="text" value="main"
+          class="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08]
+                 rounded-lg focus:outline-none focus:ring-1 focus:ring-accent-500/50 focus:border-accent-500/60
+                 text-gray-900 dark:text-gray-100" />
+      </div>
+      <button id="register-btn" onclick="registerApp(this)" data-loading-label="Creating…"
+        class="w-full inline-flex items-center justify-center gap-2 text-sm font-semibold text-white
+               bg-accent-600 hover:bg-accent-700 px-4 py-2.5 rounded-lg transition-colors active:scale-[0.98]">
+        <i class="fas fa-plus text-xs"></i> Create application
+      </button>
+    </div>
+
+    <div id="newAppResult" class="hidden p-5">
+      <div class="flex items-center gap-2 mb-4">
+        <i class="fas fa-circle-check text-emerald-500 text-lg"></i>
+        <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">Application registered</p>
+      </div>
+      <p class="text-[12px] text-zinc-500 mb-3">Push your app to deploy it:</p>
+      <div class="bg-[#0a0a0a] rounded-xl p-4 space-y-2" id="push-commands"></div>
+      <button onclick="closeNewAppModal(); location.reload();"
+        class="mt-4 w-full text-sm font-semibold text-gray-700 dark:text-zinc-300
+               bg-gray-100 dark:bg-white/[0.06] hover:bg-gray-200 dark:hover:bg-white/[0.09]
+               px-4 py-2.5 rounded-lg transition-colors">
+        Done
+      </button>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    let currentLogsApp = null;
-    let lastAppsFingerprint = null;
+  let currentLogsApp = null;
+  let lastAppsFingerprint = null;
 
-    document.querySelectorAll('[data-relative-time]').forEach(el => {
-        const value = el.dataset.relativeTime;
-        if (value) el.textContent = relativeTime(value);
+  document.querySelectorAll('[data-relative-time]').forEach(el => {
+    const v = el.dataset.relativeTime;
+    if (v) el.textContent = relativeTime(v);
+  });
+
+  document.getElementById('app-search').addEventListener('input', e => {
+    const q = e.target.value.trim().toLowerCase();
+    let visible = 0;
+    document.querySelectorAll('.app-row').forEach(row => {
+      const match = row.dataset.appName.includes(q);
+      row.classList.toggle('hidden', !match);
+      if (match) visible++;
     });
+    document.getElementById('no-results').classList.toggle(
+      'hidden', visible !== 0 || document.querySelectorAll('.app-row').length === 0
+    );
+  });
 
-    document.getElementById('app-search').addEventListener('input', (e) => {
-        const q = e.target.value.trim().toLowerCase();
-        const rows = document.querySelectorAll('.app-row');
-        let visible = 0;
-        rows.forEach(row => {
-            const match = row.dataset.appName.includes(q);
-            row.classList.toggle('hidden', !match);
-            if (match) visible++;
-        });
-        document.getElementById('no-results').classList.toggle('hidden', visible !== 0 || rows.length === 0);
-    });
-
-    async function deployApp(appName, button) {
-        showLoading(button);
-        try {
-            await axios.post(`/api/apps/${appName}/deploy`);
-            showToast(`Deployed <strong>${appName}</strong>`, 'success');
-            setTimeout(() => location.reload(), 1200);
-        } catch (error) {
-            showToast(error.response?.data?.error || `Failed to deploy ${appName}`, 'error');
-            hideLoading(button);
-        }
+  async function deployApp(name, btn) {
+    showLoading(btn);
+    try {
+      await axios.post(`/api/apps/${name}/deploy`);
+      showToast(`Deployed <strong>${name}</strong>`, 'success');
+      setTimeout(() => location.reload(), 1200);
+    } catch (e) {
+      showToast(e.response?.data?.error || `Failed to deploy ${name}`, 'error');
+      hideLoading(btn);
     }
+  }
 
-    async function stopApp(appName, button) {
-        showLoading(button);
-        try {
-            await axios.post(`/api/apps/${appName}/stop`);
-            showToast(`Stopped <strong>${appName}</strong>`, 'success');
-            setTimeout(() => location.reload(), 800);
-        } catch (error) {
-            showToast(error.response?.data?.error || `Failed to stop ${appName}`, 'error');
-            hideLoading(button);
-        }
+  async function stopApp(name, btn) {
+    showLoading(btn);
+    try {
+      await axios.post(`/api/apps/${name}/stop`);
+      showToast(`Stopped <strong>${name}</strong>`, 'success');
+      setTimeout(() => location.reload(), 800);
+    } catch (e) {
+      showToast(e.response?.data?.error || `Failed to stop ${name}`, 'error');
+      hideLoading(btn);
     }
+  }
 
-    async function startApp(appName, button) {
-        showLoading(button);
-        try {
-            await axios.post(`/api/apps/${appName}/start`);
-            showToast(`Started <strong>${appName}</strong>`, 'success');
-            setTimeout(() => location.reload(), 800);
-        } catch (error) {
-            showToast(error.response?.data?.error || `Failed to start ${appName}`, 'error');
-            hideLoading(button);
-        }
+  async function startApp(name, btn) {
+    showLoading(btn);
+    try {
+      await axios.post(`/api/apps/${name}/start`);
+      showToast(`Started <strong>${name}</strong>`, 'success');
+      setTimeout(() => location.reload(), 800);
+    } catch (e) {
+      showToast(e.response?.data?.error || `Failed to start ${name}`, 'error');
+      hideLoading(btn);
     }
+  }
 
-    const logsSkeleton = Array.from({ length: 6 }, (_, i) =>
-        `<div class="h-3 bg-gray-800 rounded animate-pulse mb-2.5" style="width: ${65 + (i * 37) % 30}%"></div>`
-    ).join('');
+  const logsSkeleton = Array.from({length:6},(_,i)=>
+    `<div class="h-3 bg-zinc-800 rounded animate-pulse mb-2.5" style="width:${60+(i*41)%35}%"></div>`
+  ).join('');
 
-    async function showLogs(appName) {
-        currentLogsApp = appName;
-        document.getElementById('logsTitle').textContent = `${appName} — logs`;
-        document.getElementById('logsContent').innerHTML = logsSkeleton;
-        openModal('logsModal');
-        await refreshLogs();
+  async function showLogs(name) {
+    currentLogsApp = name;
+    document.getElementById('logsTitle').textContent = `${name} — logs`;
+    document.getElementById('logsContent').innerHTML = logsSkeleton;
+    openModal('logsModal');
+    await refreshLogs();
+  }
+
+  async function refreshLogs() {
+    if (!currentLogsApp) return;
+    try {
+      const r = await axios.get(`/api/apps/${currentLogsApp}/logs`);
+      document.getElementById('logsContent').textContent = r.data.logs || '(no output)';
+    } catch (e) {
+      document.getElementById('logsContent').textContent = e.response?.data?.error || 'Failed to fetch logs';
     }
+  }
 
-    async function refreshLogs() {
-        if (!currentLogsApp) return;
-        try {
-            const response = await axios.get(`/api/apps/${currentLogsApp}/logs`);
-            document.getElementById('logsContent').textContent = response.data.logs || '(no output)';
-        } catch (error) {
-            document.getElementById('logsContent').textContent = error.response?.data?.error || 'Failed to fetch logs';
-        }
+  function closeLogs() { closeModal('logsModal'); currentLogsApp = null; }
+
+  function openNewAppModal() {
+    document.getElementById('newAppForm').classList.remove('hidden');
+    document.getElementById('newAppResult').classList.add('hidden');
+    document.getElementById('new-app-name').value = '';
+    openModal('newAppModal');
+    setTimeout(() => document.getElementById('new-app-name').focus(), 80);
+  }
+  function closeNewAppModal() { closeModal('newAppModal'); }
+
+  async function registerApp(btn) {
+    const name = document.getElementById('new-app-name').value.trim();
+    const branch = document.getElementById('new-app-branch').value.trim() || 'main';
+    if (!name) { showToast('Application name is required', 'error'); return; }
+    showLoading(btn);
+    try {
+      const r = await axios.post('/api/apps', { name, branch });
+      const box = document.getElementById('push-commands');
+      box.innerHTML = '';
+      r.data.push_commands.forEach(cmd => {
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between gap-2 group';
+        row.innerHTML = `
+          <code class="text-[11px] text-zinc-300 font-mono truncate">${cmd}</code>
+          <button class="text-zinc-600 hover:text-zinc-200 flex-shrink-0" title="Copy">
+            <i class="fas fa-copy text-[10px]"></i>
+          </button>`;
+        row.querySelector('button').addEventListener('click', e => copyText(cmd, e.currentTarget));
+        box.appendChild(row);
+      });
+      document.getElementById('newAppForm').classList.add('hidden');
+      document.getElementById('newAppResult').classList.remove('hidden');
+    } catch (e) {
+      showToast(e.response?.data?.error || 'Failed to register application', 'error');
+    } finally { hideLoading(btn); }
+  }
+
+  document.getElementById('logsModal').addEventListener('click', e => { if (e.target.id === 'logsModal') closeLogs(); });
+  document.getElementById('newAppModal').addEventListener('click', e => { if (e.target.id === 'newAppModal') closeNewAppModal(); });
+  document.addEventListener('keydown', e => { if (e.key !== 'Escape') return; closeLogs(); closeNewAppModal(); });
+
+  function appsFingerprint(apps) {
+    return apps.map(a => `${a.name}:${a.status}:${a.health_status}:${a.container_id}:${a.marked_failed}`).join('|');
+  }
+
+  async function pollAppStatus() {
+    if (currentLogsApp || !document.getElementById('newAppModal').classList.contains('hidden')) return;
+    try {
+      const r = await axios.get('/api/apps');
+      document.getElementById('live-dot').classList.remove('hidden');
+      const fp = appsFingerprint(r.data);
+      if (lastAppsFingerprint !== null && fp !== lastAppsFingerprint) { location.reload(); return; }
+      lastAppsFingerprint = fp;
+    } catch {
+      document.getElementById('live-dot').classList.add('hidden');
     }
+  }
 
-    function closeLogs() {
-        closeModal('logsModal');
-        currentLogsApp = null;
-    }
-
-    function openNewAppModal() {
-        document.getElementById('newAppForm').classList.remove('hidden');
-        document.getElementById('newAppResult').classList.add('hidden');
-        document.getElementById('new-app-name').value = '';
-        openModal('newAppModal');
-        document.getElementById('new-app-name').focus();
-    }
-
-    function closeNewAppModal() {
-        closeModal('newAppModal');
-    }
-
-    async function registerApp(button) {
-        const name = document.getElementById('new-app-name').value.trim();
-        const branch = document.getElementById('new-app-branch').value.trim() || 'main';
-        if (!name) { showToast('Application name is required', 'error'); return; }
-
-        showLoading(button);
-        try {
-            const response = await axios.post('/api/apps', { name, branch });
-            const commandsBox = document.getElementById('push-commands');
-            commandsBox.innerHTML = '';
-            response.data.push_commands.forEach(cmd => {
-                const row = document.createElement('div');
-                row.className = 'flex items-center justify-between gap-2 group';
-                row.innerHTML = `
-                    <code class="text-xs text-gray-100 font-mono truncate">${cmd}</code>
-                    <button class="text-gray-500 hover:text-gray-200 shrink-0" title="Copy">
-                        <i class="fas fa-copy text-xs"></i>
-                    </button>
-                `;
-                row.querySelector('button').addEventListener('click', (e) => copyText(cmd, e.currentTarget));
-                commandsBox.appendChild(row);
-            });
-            document.getElementById('newAppForm').classList.add('hidden');
-            document.getElementById('newAppResult').classList.remove('hidden');
-        } catch (error) {
-            showToast(error.response?.data?.error || 'Failed to register application', 'error');
-        } finally {
-            hideLoading(button);
-        }
-    }
-
-    document.getElementById('logsModal').addEventListener('click', (e) => {
-        if (e.target.id === 'logsModal') closeLogs();
-    });
-    document.getElementById('newAppModal').addEventListener('click', (e) => {
-        if (e.target.id === 'newAppModal') closeNewAppModal();
-    });
-    document.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape') return;
-        closeLogs();
-        closeNewAppModal();
-    });
-
-    // Auto-refresh: poll for status changes and reload only when something
-    // actually changed, and never while a modal is open -- reloading under
-    // someone reading logs or mid-registration would be actively hostile.
-    function appsFingerprint(apps) {
-        return apps.map(a => `${a.name}:${a.status}:${a.health_status}:${a.container_id}:${a.marked_failed}`).join('|');
-    }
-
-    async function pollAppStatus() {
-        if (currentLogsApp || !document.getElementById('newAppModal').classList.contains('hidden')) return;
-        try {
-            const response = await axios.get('/api/apps');
-            const fingerprint = appsFingerprint(response.data);
-            document.getElementById('live-indicator').classList.remove('hidden');
-            if (lastAppsFingerprint !== null && fingerprint !== lastAppsFingerprint) {
-                location.reload();
-                return;
-            }
-            lastAppsFingerprint = fingerprint;
-        } catch (error) {
-            document.getElementById('live-indicator').classList.add('hidden');
-        }
-    }
-
-    lastAppsFingerprint = appsFingerprint({{ apps|tojson }});
-    document.getElementById('live-indicator').classList.remove('hidden');
-    setInterval(pollAppStatus, 5000);
+  lastAppsFingerprint = appsFingerprint({{ apps|tojson }});
+  document.getElementById('live-dot').classList.remove('hidden');
+  setInterval(pollAppStatus, 5000);
 </script>
 {% endblock %}

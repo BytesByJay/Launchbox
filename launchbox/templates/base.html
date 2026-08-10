@@ -1,233 +1,227 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Launchbox{% endblock %}</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Launchbox{% endblock %}</title>
 
-    <!-- Applied before first paint so switching themes never flashes the wrong one. -->
-    <script>
-        (function () {
-            var saved = localStorage.getItem('lb-theme');
-            if (saved === 'dark') document.documentElement.classList.add('dark');
-        })();
-    </script>
+  <!-- Default dark; only switch to light when explicitly saved -->
+  <script>
+    (function () {
+      var saved = localStorage.getItem('lb-theme');
+      if (saved === 'light') {
+        document.documentElement.classList.remove('dark');
+      } else {
+        document.documentElement.classList.add('dark');
+        if (!saved) localStorage.setItem('lb-theme', 'dark');
+      }
+    })();
+  </script>
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-                        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
-                    },
-                    colors: {
-                        accent: {
-                            50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe',
-                            400: '#818cf8', 500: '#6366f1', 600: '#4f46e5',
-                            700: '#4338ca',
-                        },
-                    },
-                    boxShadow: {
-                        card: '0 1px 1px 0 rgb(0 0 0 / 0.03)',
-                    },
-                },
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+          },
+          colors: {
+            accent: {
+              50: '#f5f3ff', 100: '#ede9fe', 200: '#ddd6fe',
+              400: '#a78bfa', 500: '#8b5cf6', 600: '#7c3aed', 700: '#6d28d9',
             },
-        };
-    </script>
-    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <style>
-        body { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
-        .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
-        ::selection { background-color: #c7d2fe; }
-        .dark ::selection { background-color: #3730a3; }
-        /* Buttons and links have no focus style of their own (inputs get one
-           from Tailwind's focus:ring utility) -- without this, tabbing
-           through icon-only buttons is invisible. */
-        button:focus-visible, a:focus-visible {
-            outline: 2px solid #6366f1;
-            outline-offset: 2px;
-            border-radius: 4px;
-        }
-        .dark button:focus-visible, .dark a:focus-visible {
-            outline-color: #818cf8;
-        }
-    </style>
-    {% block head %}{% endblock %}
+          },
+        },
+      },
+    };
+  </script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <style>
+    body { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+    .dark ::-webkit-scrollbar-thumb { background: #333; }
+    ::selection { background-color: #7c3aed40; }
+    button:focus-visible, a:focus-visible {
+      outline: 2px solid #7c3aed;
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+    .status-dot-pulse { animation: pulse 2s cubic-bezier(.4,0,.6,1) infinite; }
+    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+  </style>
+  {% block head %}{% endblock %}
 </head>
-<body class="bg-gray-50 dark:bg-gray-950 min-h-screen text-gray-900 dark:text-gray-100 antialiased transition-colors">
-    <nav class="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-40">
-        <div class="max-w-screen-2xl mx-auto px-4 sm:px-6">
-            <div class="flex items-center justify-between h-11">
-                <a href="/" class="flex items-center gap-2 group">
-                    <span class="flex items-center justify-center w-6 h-6 rounded bg-accent-600 text-white group-hover:bg-accent-700 transition-colors">
-                        <i class="fas fa-rocket text-[11px]"></i>
-                    </span>
-                    <span class="font-semibold text-[13px] tracking-tight text-gray-900 dark:text-gray-100">Launchbox</span>
-                </a>
-                <div class="flex items-center gap-1">
-                    <a href="/" class="text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 px-2.5 py-1 rounded transition-colors">
-                        Applications
-                    </a>
-                    <span id="docker-status-pill" class="ml-2 hidden sm:inline-flex items-center gap-1.5 text-[11px] font-medium text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded px-2 py-0.5">
-                        <span class="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600"></span>
-                        <span>Docker</span>
-                    </span>
-                    <button id="theme-toggle" onclick="toggleTheme()" title="Toggle theme"
-                        class="ml-1 w-7 h-7 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors">
-                        <i class="fas fa-moon text-xs dark:hidden"></i>
-                        <i class="fas fa-sun text-xs hidden dark:inline"></i>
-                    </button>
-                </div>
-            </div>
+<body class="bg-white dark:bg-[#0c0c0c] min-h-screen text-gray-900 dark:text-gray-100 antialiased transition-colors duration-150">
+
+  <!-- NAV -->
+  <nav class="border-b border-gray-200 dark:border-white/[0.06] sticky top-0 z-40 bg-white/95 dark:bg-[#0c0c0c]/95 backdrop-blur-sm">
+    <div class="max-w-6xl mx-auto px-5 h-12 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-2.5 group">
+        <div class="w-6 h-6 rounded-md bg-accent-600 flex items-center justify-center group-hover:bg-accent-700 transition-colors">
+          <i class="fas fa-rocket text-white text-[10px]"></i>
         </div>
-    </nav>
+        <span class="font-semibold text-[13px] tracking-tight text-gray-900 dark:text-white">Launchbox</span>
+      </a>
 
-    <main class="max-w-screen-2xl mx-auto px-4 sm:px-6 py-5">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div class="mb-6 space-y-2">
-                    {% for category, message in messages %}
-                        <div class="flex items-start gap-2.5 px-4 py-3 rounded-lg border text-sm
-                            {% if category == 'error' %}bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-900 text-red-800 dark:text-red-300{% else %}bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900 text-emerald-800 dark:text-emerald-300{% endif %}">
-                            <i class="fas {% if category == 'error' %}fa-circle-exclamation{% else %}fa-circle-check{% endif %} mt-0.5"></i>
-                            <span>{{ message }}</span>
-                        </div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-        {% endwith %}
+      <div class="flex items-center gap-1">
+        <a href="/"
+          class="text-[12px] font-medium px-2.5 py-1 rounded text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.05] transition-colors">
+          Dashboard
+        </a>
 
-        {% block content %}{% endblock %}
-    </main>
+        <!-- Docker pill -->
+        <span id="docker-status-pill"
+          class="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border
+                 text-zinc-500 dark:text-zinc-500 border-gray-200 dark:border-white/10 ml-2">
+          <span class="w-1.5 h-1.5 rounded-full bg-zinc-400 dark:bg-zinc-600"></span>
+          <span>Docker</span>
+        </span>
 
-    <div id="toast-stack" class="fixed top-4 right-4 z-50 flex flex-col gap-2 items-end"></div>
+        <!-- Theme toggle -->
+        <button id="theme-toggle" onclick="toggleTheme()" title="Toggle theme"
+          class="ml-1 w-7 h-7 flex items-center justify-center text-gray-400 dark:text-zinc-500
+                 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-white/[0.06] rounded transition-colors">
+          <i class="fas fa-moon text-[11px] dark:hidden"></i>
+          <i class="fas fa-sun text-[11px] hidden dark:inline"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
 
-    <script>
-        // Shared modal open/close: toggles hidden/flex plus a scale+fade
-        // transition, so every modal in the app enters and exits the same way
-        // instead of the previous hard cut.
-        function openModal(id) {
-            const el = document.getElementById(id);
-            if (!el) return;
-            el.classList.remove('hidden');
-            el.classList.add('flex');
-            requestAnimationFrame(() => {
-                el.classList.remove('opacity-0');
-                const panel = el.querySelector('.modal-panel');
-                if (panel) panel.classList.remove('scale-95');
-            });
-        }
+  <main class="max-w-6xl mx-auto px-5 py-6">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-5 space-y-2">
+          {% for category, message in messages %}
+            <div class="flex items-start gap-2.5 px-4 py-3 rounded-lg border text-sm
+              {% if category == 'error' %}bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-400
+              {% else %}bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-400{% endif %}">
+              <i class="fas {% if category == 'error' %}fa-circle-exclamation{% else %}fa-circle-check{% endif %} mt-0.5 flex-shrink-0"></i>
+              <span>{{ message }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
 
-        function closeModal(id) {
-            const el = document.getElementById(id);
-            if (!el) return;
-            el.classList.add('opacity-0');
-            const panel = el.querySelector('.modal-panel');
-            if (panel) panel.classList.add('scale-95');
-            setTimeout(() => {
-                el.classList.add('hidden');
-                el.classList.remove('flex');
-            }, 150);
-        }
+    {% block content %}{% endblock %}
+  </main>
 
-        function toggleTheme() {
-            const isDark = document.documentElement.classList.toggle('dark');
-            localStorage.setItem('lb-theme', isDark ? 'dark' : 'light');
-        }
+  <!-- Toast stack -->
+  <div id="toast-stack" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 items-end"></div>
 
-        function showLoading(button) {
-            if (!button) return;
-            button.dataset.originalHtml = button.innerHTML;
-            button.disabled = true;
-            button.classList.add('opacity-60', 'cursor-wait');
-            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>' + (button.dataset.loadingLabel ? ' ' + button.dataset.loadingLabel : '');
-        }
+  <script>
+    function openModal(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('hidden');
+      el.classList.add('flex');
+      requestAnimationFrame(() => {
+        el.classList.remove('opacity-0');
+        const panel = el.querySelector('.modal-panel');
+        if (panel) panel.classList.remove('scale-95');
+      });
+    }
 
-        function hideLoading(button) {
-            if (!button) return;
-            button.disabled = false;
-            button.classList.remove('opacity-60', 'cursor-wait');
-            if (button.dataset.originalHtml) button.innerHTML = button.dataset.originalHtml;
-        }
+    function closeModal(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.add('opacity-0');
+      const panel = el.querySelector('.modal-panel');
+      if (panel) panel.classList.add('scale-95');
+      setTimeout(() => { el.classList.add('hidden'); el.classList.remove('flex'); }, 150);
+    }
 
-        function showToast(message, type = 'info') {
-            const stack = document.getElementById('toast-stack');
-            const toast = document.createElement('div');
-            const styles = {
-                success: { icon: 'fa-circle-check', iconColor: 'text-emerald-500', border: 'border-emerald-200 dark:border-emerald-900' },
-                error: { icon: 'fa-circle-exclamation', iconColor: 'text-red-500', border: 'border-red-200 dark:border-red-900' },
-                info: { icon: 'fa-circle-info', iconColor: 'text-accent-500', border: 'border-gray-200 dark:border-gray-700' },
-            };
-            const s = styles[type] || styles.info;
-            toast.className = `flex items-start gap-2.5 bg-white dark:bg-gray-800 border ${s.border} shadow-lg rounded-lg px-4 py-3 text-sm text-gray-800 dark:text-gray-100 max-w-sm transition-all duration-200 translate-x-2 opacity-0`;
-            toast.innerHTML = `
-                <i class="fas ${s.icon} ${s.iconColor} mt-0.5"></i>
-                <span class="flex-1">${message}</span>
-                <button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" aria-label="Dismiss">
-                    <i class="fas fa-xmark"></i>
-                </button>
-            `;
-            toast.querySelector('button').addEventListener('click', () => toast.remove());
-            stack.appendChild(toast);
-            requestAnimationFrame(() => toast.classList.remove('translate-x-2', 'opacity-0'));
-            setTimeout(() => {
-                toast.classList.add('opacity-0');
-                setTimeout(() => toast.remove(), 200);
-            }, 5000);
-        }
+    function toggleTheme() {
+      const isDark = document.documentElement.classList.toggle('dark');
+      localStorage.setItem('lb-theme', isDark ? 'dark' : 'light');
+    }
 
-        function relativeTime(isoString) {
-            if (!isoString) return '—';
-            // Only assume UTC and append 'Z' when the string carries NO
-            // timezone information at all. state.py's timestamps carry an
-            // explicit "+00:00" offset (Python's isoformat()), not a bare
-            // 'Z' -- checking endsWith('Z') alone missed that case and
-            // appended a second, contradictory zone marker, producing an
-            // unparseable string that silently fell back to raw text.
-            let normalized = isoString.replace(' ', 'T');
-            const hasTimezone = /[Zz]$/.test(normalized) || /[+-]\d{2}:?\d{2}$/.test(normalized);
-            if (!hasTimezone) normalized += 'Z';
-            const then = new Date(normalized);
-            if (isNaN(then.getTime())) return isoString;
-            const seconds = Math.floor((Date.now() - then.getTime()) / 1000);
-            if (seconds < 5) return 'just now';
-            if (seconds < 60) return `${seconds}s ago`;
-            const minutes = Math.floor(seconds / 60);
-            if (minutes < 60) return `${minutes}m ago`;
-            const hours = Math.floor(minutes / 60);
-            if (hours < 24) return `${hours}h ago`;
-            const days = Math.floor(hours / 24);
-            return `${days}d ago`;
-        }
+    function showLoading(btn) {
+      if (!btn) return;
+      btn.dataset.originalHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.classList.add('opacity-60', 'cursor-wait');
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>' + (btn.dataset.loadingLabel ? ' ' + btn.dataset.loadingLabel : '');
+    }
 
-        function copyText(text, button) {
-            navigator.clipboard.writeText(text).then(() => {
-                if (!button) { showToast('Copied to clipboard', 'success'); return; }
-                const original = button.innerHTML;
-                button.innerHTML = '<i class="fas fa-check text-emerald-500"></i>';
-                setTimeout(() => { button.innerHTML = original; }, 1200);
-            }).catch(() => showToast('Could not copy — select and copy manually', 'error'));
-        }
+    function hideLoading(btn) {
+      if (!btn) return;
+      btn.disabled = false;
+      btn.classList.remove('opacity-60', 'cursor-wait');
+      if (btn.dataset.originalHtml) btn.innerHTML = btn.dataset.originalHtml;
+    }
 
-        (function checkDockerStatus() {
-            const pill = document.getElementById('docker-status-pill');
-            if (!pill) return;
-            axios.get('/api/apps').then(() => {
-                pill.querySelector('span:first-child').className = 'w-1.5 h-1.5 rounded-full bg-emerald-500';
-                pill.querySelector('span:last-child').textContent = 'Connected';
-            }).catch(() => {
-                pill.querySelector('span:first-child').className = 'w-1.5 h-1.5 rounded-full bg-red-500';
-                pill.querySelector('span:last-child').textContent = 'Unavailable';
-            });
-        })();
-    </script>
-    {% block scripts %}{% endblock %}
+    function showToast(message, type = 'info') {
+      const stack = document.getElementById('toast-stack');
+      const toast = document.createElement('div');
+      const map = {
+        success: { icon: 'fa-circle-check', color: 'text-emerald-500', border: 'border-emerald-900/50' },
+        error:   { icon: 'fa-circle-exclamation', color: 'text-red-400', border: 'border-red-900/50' },
+        info:    { icon: 'fa-circle-info', color: 'text-accent-400', border: 'border-white/10' },
+      };
+      const s = map[type] || map.info;
+      toast.className = `flex items-start gap-2.5 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:${s.border}
+        shadow-xl rounded-xl px-4 py-3 text-sm text-gray-800 dark:text-gray-100 max-w-sm
+        transition-all duration-200 translate-y-2 opacity-0`;
+      toast.innerHTML = `
+        <i class="fas ${s.icon} ${s.color} mt-0.5 flex-shrink-0"></i>
+        <span class="flex-1">${message}</span>
+        <button class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 ml-1"><i class="fas fa-xmark text-xs"></i></button>`;
+      toast.querySelector('button').addEventListener('click', () => toast.remove());
+      stack.appendChild(toast);
+      requestAnimationFrame(() => toast.classList.remove('translate-y-2', 'opacity-0'));
+      setTimeout(() => { toast.classList.add('opacity-0'); setTimeout(() => toast.remove(), 200); }, 5000);
+    }
+
+    function relativeTime(iso) {
+      if (!iso) return '—';
+      let s = iso.replace(' ', 'T');
+      if (!/[Zz]$/.test(s) && !/[+-]\d{2}:?\d{2}$/.test(s)) s += 'Z';
+      const d = new Date(s);
+      if (isNaN(d)) return iso;
+      const sec = Math.floor((Date.now() - d) / 1000);
+      if (sec < 5) return 'just now';
+      if (sec < 60) return `${sec}s ago`;
+      const m = Math.floor(sec / 60);
+      if (m < 60) return `${m}m ago`;
+      const h = Math.floor(m / 60);
+      if (h < 24) return `${h}h ago`;
+      return `${Math.floor(h / 24)}d ago`;
+    }
+
+    function copyText(text, btn) {
+      navigator.clipboard.writeText(text).then(() => {
+        if (!btn) { showToast('Copied', 'success'); return; }
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check text-emerald-400"></i>';
+        setTimeout(() => { btn.innerHTML = orig; }, 1200);
+      }).catch(() => showToast('Could not copy', 'error'));
+    }
+
+    // Docker status
+    (function () {
+      const pill = document.getElementById('docker-status-pill');
+      if (!pill) return;
+      pill.classList.remove('hidden');
+      axios.get('/api/apps').then(() => {
+        pill.querySelector('span').className = 'w-1.5 h-1.5 rounded-full bg-emerald-500';
+        pill.querySelectorAll('span')[1].textContent = 'Connected';
+      }).catch(() => {
+        pill.querySelector('span').className = 'w-1.5 h-1.5 rounded-full bg-red-500';
+        pill.querySelectorAll('span')[1].textContent = 'Offline';
+      });
+    })();
+  </script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>
